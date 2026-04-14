@@ -33,10 +33,11 @@ favMu       sync.RWMutex
 runtimeFavs map[string][]config.Favourite // key: username or "" for global
 cfgMu      sync.Mutex // protects cfg.Favourites / cfg.Users[i].Favourites during save
 configPath string     // path to the loaded config.yaml; empty = no persistence
+version    string     // application version string set at build time
 }
 
 // New creates a Handler. If cfg.AuthRequired(), users must contain one FS per user.
-func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry, configPath string) *Handler {
+func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry, configPath string, version string) *Handler {
 // Initialize runtime favourites from config, preserving the existing
 // fallback: per-user favs take priority; users without their own fall back
 // to the global list.
@@ -64,6 +65,7 @@ authStore:   authStore,
 mux:         http.NewServeMux(),
 runtimeFavs: runtimeFavs,
 configPath:  configPath,
+version:     version,
 }
 h.registerRoutes(staticFS)
 return h
@@ -90,6 +92,7 @@ func (h *Handler) registerRoutes(staticFS http.FileSystem) {
 // Auth endpoints (always accessible)
 h.mux.HandleFunc("/api/login", h.handleLogin)
 h.mux.HandleFunc("/api/logout", h.handleLogout)
+h.mux.HandleFunc("/api/version", h.handleVersion)
 
 // Protected API endpoints
 h.mux.HandleFunc("/api/me", h.authMiddleware(h.handleMe))
@@ -105,6 +108,7 @@ h.mux.HandleFunc("/api/zip-download", h.authMiddleware(h.handleZipDownload))
 h.mux.HandleFunc("/api/read", h.authMiddleware(h.handleRead))
 h.mux.HandleFunc("/api/write", h.authMiddleware(h.handleWrite))
 h.mux.HandleFunc("/api/info", h.authMiddleware(h.handleInfo))
+h.mux.HandleFunc("/api/folder-info", h.authMiddleware(h.handleFolderInfo))
 h.mux.HandleFunc("/api/favourites", h.authMiddleware(h.handleFavourites))
 h.mux.HandleFunc("/api/favourites/add", h.authMiddleware(h.handleFavouritesAdd))
 h.mux.HandleFunc("/api/favourites/remove", h.authMiddleware(h.handleFavouritesRemove))
@@ -304,6 +308,12 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 w.Header().Set("Content-Type", "application/json")
 w.WriteHeader(code)
 json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// ---- Version handler --------------------------------------------------------
+
+func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
+writeJSON(w, map[string]string{"version": h.version})
 }
 
 // ---- Auth handlers ----------------------------------------------------------
@@ -678,6 +688,31 @@ return
 }
 usage, _ := h.fsForRequest(r).DiskUsageAt(path)
 writeJSON(w, map[string]any{"file": entry, "disk": usage})
+}
+
+func (h *Handler) handleFolderInfo(w http.ResponseWriter, r *http.Request) {
+path := r.URL.Query().Get("path")
+if path == "" {
+writeError(w, http.StatusBadRequest, "path required")
+return
+}
+entry, err := h.fsForRequest(r).FileInfo(path)
+if err != nil {
+writeError(w, http.StatusNotFound, err.Error())
+return
+}
+if !entry.IsDir {
+writeError(w, http.StatusBadRequest, "path is not a directory")
+return
+}
+totalSize, fileCount, _ := h.fsForRequest(r).DirSize(path)
+writeJSON(w, map[string]any{
+"name":       entry.Name,
+"path":       entry.Path,
+"mod_time":   entry.ModTime,
+"total_size": totalSize,
+"file_count": fileCount,
+})
 }
 
 func (h *Handler) handleFavourites(w http.ResponseWriter, r *http.Request) {

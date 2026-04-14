@@ -32,7 +32,7 @@ func setupHandler(t *testing.T) (*Handler, string) {
 			{Name: "Home", Path: "/"},
 		},
 	}
-	h := New(fsys, cfg, http.Dir(dir), nil, nil, "")
+	h := New(fsys, cfg, http.Dir(dir), nil, nil, "", "test")
 	return h, dir
 }
 
@@ -279,7 +279,7 @@ func TestFavouritesPersistence(t *testing.T) {
 		t.Fatalf("mkdir: %v", err)
 	}
 
-	h := New(fsys, initialCfg, http.Dir(dir), nil, nil, cfgPath)
+	h := New(fsys, initialCfg, http.Dir(dir), nil, nil, cfgPath, "test")
 
 	// Add a favourite.
 	body := `{"path":"/docs","name":"Docs"}`

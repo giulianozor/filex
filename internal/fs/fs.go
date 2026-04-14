@@ -391,6 +391,27 @@ func (f *FS) SaveUpload(dirPath, filename string, src io.Reader) error {
 	})
 }
 
+// DirSize returns the total size in bytes and the number of files in a directory tree.
+func (f *FS) DirSize(path string) (totalBytes int64, fileCount int64, err error) {
+err = f.runAs(func() error {
+abs, err := f.resolve(path)
+if err != nil {
+return err
+}
+return filepath.Walk(abs, func(_ string, info os.FileInfo, err error) error {
+if err != nil {
+return nil // skip unreadable entries
+}
+if !info.IsDir() {
+totalBytes += info.Size()
+fileCount++
+}
+return nil
+})
+})
+return
+}
+
 // DiskUsage returns disk usage statistics for the base path.
 func (f *FS) DiskUsage() (*DiskUsage, error) {
 return f.diskUsageFor(f.basePath)
