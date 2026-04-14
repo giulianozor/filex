@@ -695,7 +695,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const btnLogout = document.getElementById('btn-logout');
   if (btnLogout) {
     btnLogout.addEventListener('click', async () => {
-      await fetch('/api/logout', { method: 'POST' });
+      try {
+        await fetch('/api/logout', { method: 'POST' });
+      } catch (_) {
+        // Ignore network errors — clear local state and redirect anyway
+      }
       window.location.href = '/login';
     });
   }
