@@ -238,26 +238,44 @@ return os.Rename(abs, validPath)
 }
 
 // Move moves src to dst (dst is directory or new name).
+// If src and dst are on different filesystems (EXDEV), it falls back to a
+// recursive copy followed by removal of the source.
 func (f *FS) Move(src, dst string) error {
-return f.runAs(func() error {
-absSrc, err := f.resolve(src)
-if err != nil {
-return err
+	return f.runAs(func() error {
+		absSrc, err := f.resolve(src)
+		if err != nil {
+			return err
+		}
+		absDst, err := f.resolve(dst)
+		if err != nil {
+			return err
+		}
+		info, err := os.Stat(absDst)
+		if err == nil && info.IsDir() {
+			candidate := filepath.Join(absDst, filepath.Base(absSrc))
+			absDst, err = f.validateAbs(candidate)
+			if err != nil {
+				return err
+			}
+		}
+		if err := os.Rename(absSrc, absDst); err != nil {
+			var errno syscall.Errno
+			if errors.As(err, &errno) && errno == syscall.EXDEV {
+				return f.moveXDev(absSrc, absDst)
+			}
+			return err
+		}
+		return nil
+	})
 }
-absDst, err := f.resolve(dst)
-if err != nil {
-return err
-}
-info, err := os.Stat(absDst)
-if err == nil && info.IsDir() {
-candidate := filepath.Join(absDst, filepath.Base(absSrc))
-absDst, err = f.validateAbs(candidate)
-if err != nil {
-return err
-}
-}
-return os.Rename(absSrc, absDst)
-})
+
+// moveXDev performs a cross-device move by copying src to dst then removing src.
+func (f *FS) moveXDev(src, dst string) error {
+	if err := f.copyAll(src, dst); err != nil {
+		_ = os.RemoveAll(dst) // clean up partial copy
+		return fmt.Errorf("cross-device move failed: %w", err)
+	}
+	return os.RemoveAll(src)
 }
 
 // ReadFile returns contents of a text file (max 10 MB).

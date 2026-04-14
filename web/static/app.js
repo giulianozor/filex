@@ -353,6 +353,10 @@ function updateSelectionButtons() {
   if (btn) btn.style.display = state.selectedFiles.size > 0 ? '' : 'none';
   const dlBtn = document.getElementById('btn-download-sel');
   if (dlBtn) dlBtn.style.display = state.selectedFiles.size > 0 ? '' : 'none';
+  const mvBtn = document.getElementById('btn-move-sel');
+  if (mvBtn) mvBtn.style.display = state.selectedFiles.size > 0 ? '' : 'none';
+  const cpBtn = document.getElementById('btn-copy-sel');
+  if (cpBtn) cpBtn.style.display = state.selectedFiles.size > 0 ? '' : 'none';
 }
 
 function updateSelectAllState() {
@@ -557,8 +561,8 @@ function folderBrowserUp(mode) {
   loadFolderBrowser(mode, parent);
 }
 
-function openMoveModal(path) {
-  state.moveSrc = path;
+function openMoveModal(pathOrPaths) {
+  state.moveSrc = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
   const initPath = state.currentPath;
   document.getElementById('move-dst').value = initPath;
   openModal('modal-move');
@@ -569,9 +573,14 @@ function openMoveModal(path) {
 async function doMove() {
   const dst = document.getElementById('move-dst').value.trim();
   if (!dst) { toast('Enter a destination path', 'error'); return; }
+  const srcs = Array.isArray(state.moveSrc) ? state.moveSrc : [state.moveSrc];
   try {
-    await apiPost('/api/move', { src: state.moveSrc, dst });
-    toast('Moved successfully', 'success');
+    for (const src of srcs) {
+      await apiPost('/api/move', { src, dst });
+    }
+    toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
+    srcs.forEach(p => state.selectedFiles.delete(p));
+    updateSelectionButtons();
     closeModal('modal-move');
     loadDirectory(state.currentPath);
   } catch (e) {
@@ -613,8 +622,8 @@ async function downloadZip(paths) {
 }
 
 // ─── Copy ─────────────────────────────────────────────────────────────────────
-function openCopyModal(path) {
-  state.copySrc = path;
+function openCopyModal(pathOrPaths) {
+  state.copySrc = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
   const initPath = state.currentPath;
   document.getElementById('copy-dst').value = initPath;
   openModal('modal-copy');
@@ -625,11 +634,16 @@ function openCopyModal(path) {
 async function doCopy() {
   const dst = document.getElementById('copy-dst').value.trim();
   if (!dst) { toast('Enter a destination path', 'error'); return; }
+  const srcs = Array.isArray(state.copySrc) ? state.copySrc : [state.copySrc];
   const bar = document.getElementById('upload-progress-bar');
   bar.classList.add('indeterminate');
   try {
-    await apiPost('/api/copy', { src: state.copySrc, dst });
-    toast('Copied successfully', 'success');
+    for (const src of srcs) {
+      await apiPost('/api/copy', { src, dst });
+    }
+    toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
+    srcs.forEach(p => state.selectedFiles.delete(p));
+    updateSelectionButtons();
     closeModal('modal-copy');
     loadDirectory(state.currentPath);
   } catch (e) {
@@ -970,6 +984,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // Delete selected
   document.getElementById('btn-delete-sel').addEventListener('click', () => {
     deleteFiles([...state.selectedFiles]);
+  });
+
+  // Move selected
+  document.getElementById('btn-move-sel').addEventListener('click', () => {
+    openMoveModal([...state.selectedFiles]);
+  });
+
+  // Copy selected
+  document.getElementById('btn-copy-sel').addEventListener('click', () => {
+    openCopyModal([...state.selectedFiles]);
   });
 
   // Refresh
