@@ -21,6 +21,8 @@ install: build
 
 install-openrc:
 	install -Dm755 init/filex.openrc /etc/init.d/filex
+	id -u filex >/dev/null 2>&1 || adduser -S -D -H -s /sbin/nologin filex
+	install -d -o filex -g filex -m 0755 /var/log/filex
 
 clean:
 	rm -rf bin/
