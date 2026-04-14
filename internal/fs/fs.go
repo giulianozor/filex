@@ -114,10 +114,11 @@ func (f *FS) MkDir(parent, name string) error {
 		return err
 	}
 	newDir := filepath.Join(absParent, name)
-	if _, err := f.validateAbs(newDir); err != nil {
+	validDir, err := f.validateAbs(newDir)
+	if err != nil {
 		return err
 	}
-	return os.MkdirAll(newDir, 0o755)
+	return os.MkdirAll(validDir, 0o755)
 }
 
 // Delete removes a file or directory (recursive).
@@ -140,10 +141,11 @@ func (f *FS) Rename(path, newName string) error {
 		return err
 	}
 	newPath := filepath.Join(filepath.Dir(abs), newName)
-	if _, err := f.validateAbs(newPath); err != nil {
+	validPath, err := f.validateAbs(newPath)
+	if err != nil {
 		return err
 	}
-	return os.Rename(abs, newPath)
+	return os.Rename(abs, validPath)
 }
 
 // Move moves src to dst (dst is directory or new name).
@@ -159,8 +161,9 @@ func (f *FS) Move(src, dst string) error {
 	// If dst is an existing directory, move src inside it
 	info, err := os.Stat(absDst)
 	if err == nil && info.IsDir() {
-		absDst = filepath.Join(absDst, filepath.Base(absSrc))
-		if _, err := f.validateAbs(absDst); err != nil {
+		candidate := filepath.Join(absDst, filepath.Base(absSrc))
+		absDst, err = f.validateAbs(candidate)
+		if err != nil {
 			return err
 		}
 	}
@@ -234,10 +237,11 @@ func (f *FS) SaveUpload(dirPath, filename string, src io.Reader) error {
 		return err
 	}
 	destPath := filepath.Join(absDir, filepath.Base(filename))
-	if _, err := f.validateAbs(destPath); err != nil {
+	validDest, err := f.validateAbs(destPath)
+	if err != nil {
 		return err
 	}
-	dst, err := os.Create(destPath)
+	dst, err := os.Create(validDest)
 	if err != nil {
 		return err
 	}
