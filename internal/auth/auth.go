@@ -9,7 +9,7 @@ import (
 )
 
 const cookieName = "filex_session"
-const tokenTTL = 24 * time.Hour
+const tokenTTL = 30 * 24 * time.Hour
 
 // RememberMeTTL is the session lifetime when the user selects "remember me".
 const RememberMeTTL = 30 * 24 * time.Hour
