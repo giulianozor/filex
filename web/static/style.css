@@ -64,7 +64,7 @@ a:hover { color: var(--accent-hover); }
 }
 .sidebar-logo svg { flex-shrink: 0; }
 
-.sidebar-section { padding: 10px 0; flex: 1; overflow-y: auto; }
+.sidebar-section { padding: 10px 0; flex: 1; min-height: 0; overflow-y: auto; }
 .sidebar-label {
   padding: 4px 16px;
   font-size: 11px;
@@ -518,7 +518,7 @@ td:first-child { width: 36px; padding-right: 4px; }
   to   { opacity: 1; transform: translateX(0); }
 }
 
-/* ── Upload progress ──────────────────────────────── */
+/* ── Upload / operation progress ──────────────────── */
 #upload-progress-bar {
   display: none;
   position: fixed;
@@ -527,6 +527,20 @@ td:first-child { width: 36px; padding-right: 4px; }
   background: var(--accent);
   z-index: 9999;
   transition: width 0.2s;
+}
+
+#upload-progress-bar.indeterminate {
+  display: block;
+  width: 100% !important;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: indeterminate-slide 1.2s infinite linear;
+  transition: none;
+}
+
+@keyframes indeterminate-slide {
+  from { background-position: 200% 0; }
+  to   { background-position: -200% 0; }
 }
 
 /* ── Responsive ───────────────────────────────────── */

@@ -9,6 +9,7 @@ const state = {
   selectedFiles: new Set(),
   entries: [],
   moveSrc: null,
+  copySrc: null,
   editorPath: null,
   favourites: [],
 };
@@ -94,7 +95,7 @@ async function loadDirectory(path) {
   path = path || '/';
   state.currentPath = path;
   state.selectedFiles.clear();
-  updateDeleteSelBtn();
+  updateSelectionButtons();
 
   try {
     const params = new URLSearchParams({ path, dotfiles: state.showDotfiles });
@@ -265,6 +266,12 @@ function renderFileList() {
         'Move',
         () => openMoveModal(entry.path)
       ));
+
+      actions.appendChild(makeIconBtn(
+        `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+        'Copy',
+        () => openCopyModal(entry.path)
+      ));
     }
 
     if (entry.is_dir) {
@@ -276,6 +283,24 @@ function renderFileList() {
       );
       if (isFav) starBtn.classList.add('fav-active');
       actions.appendChild(starBtn);
+
+      actions.appendChild(makeIconBtn(
+        `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>`,
+        'Download as zip',
+        () => downloadZip([entry.path])
+      ));
+
+      actions.appendChild(makeIconBtn(
+        `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>`,
+        'Move',
+        () => openMoveModal(entry.path)
+      ));
+
+      actions.appendChild(makeIconBtn(
+        `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
+        'Copy',
+        () => openCopyModal(entry.path)
+      ));
     }
 
     actions.appendChild(makeIconBtn(
@@ -319,13 +344,15 @@ function toggleSelect(path, checked, tr) {
   if (checked) state.selectedFiles.add(path);
   else state.selectedFiles.delete(path);
   tr.classList.toggle('selected', checked);
-  updateDeleteSelBtn();
+  updateSelectionButtons();
   updateSelectAllState();
 }
 
-function updateDeleteSelBtn() {
+function updateSelectionButtons() {
   const btn = document.getElementById('btn-delete-sel');
   if (btn) btn.style.display = state.selectedFiles.size > 0 ? '' : 'none';
+  const dlBtn = document.getElementById('btn-download-sel');
+  if (dlBtn) dlBtn.style.display = state.selectedFiles.size > 0 ? '' : 'none';
 }
 
 function updateSelectAllState() {
@@ -391,7 +418,7 @@ async function deleteFiles(paths) {
     await apiPost('/api/delete', { paths });
     toast(paths.length === 1 ? `Deleted ${names}` : `Deleted ${paths.length} items`, 'success');
     paths.forEach(p => state.selectedFiles.delete(p));
-    updateDeleteSelBtn();
+    updateSelectionButtons();
     loadDirectory(state.currentPath);
   } catch (e) {
     toast('Delete failed: ' + e.message, 'error');
@@ -495,6 +522,65 @@ async function doMove() {
   }
 }
 
+// ─── Zip Download ─────────────────────────────────────────────────────────────
+async function downloadZip(paths) {
+  const bar = document.getElementById('upload-progress-bar');
+  bar.classList.add('indeterminate');
+  try {
+    const name = paths.length === 1 ? basename(paths[0]) + '.zip' : 'download.zip';
+    const r = await fetch('/api/zip-download', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths }),
+    });
+    if (r.status === 401) { window.location.href = '/login'; return; }
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({}));
+      throw new Error(data.error || r.statusText);
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    toast('Download failed: ' + e.message, 'error');
+  } finally {
+    bar.classList.remove('indeterminate');
+    bar.style.display = 'none';
+  }
+}
+
+// ─── Copy ─────────────────────────────────────────────────────────────────────
+function openCopyModal(path) {
+  state.copySrc = path;
+  document.getElementById('copy-dst').value = '';
+  openModal('modal-copy');
+  setTimeout(() => document.getElementById('copy-dst').focus(), 50);
+}
+
+async function doCopy() {
+  const dst = document.getElementById('copy-dst').value.trim();
+  if (!dst) { toast('Enter a destination path', 'error'); return; }
+  const bar = document.getElementById('upload-progress-bar');
+  bar.classList.add('indeterminate');
+  try {
+    await apiPost('/api/copy', { src: state.copySrc, dst });
+    toast('Copied successfully', 'success');
+    closeModal('modal-copy');
+    loadDirectory(state.currentPath);
+  } catch (e) {
+    toast('Copy failed: ' + e.message, 'error');
+  } finally {
+    bar.classList.remove('indeterminate');
+    bar.style.display = 'none';
+  }
+}
+
 // ─── Text Editor ──────────────────────────────────────────────────────────────
 async function openEditor(entry) {
   state.editorPath = entry.path;
@@ -587,7 +673,6 @@ async function loadDiskInfo() {
     document.getElementById('disk-pct').textContent = pct + '%';
     document.getElementById('disk-used').textContent = formatSize(disk.used);
     document.getElementById('disk-total').textContent = formatSize(disk.total);
-    document.getElementById('disk-free').textContent = formatSize(disk.free);
     const fill = document.getElementById('disk-bar-fill');
     fill.style.width = pct + '%';
     fill.className = 'disk-bar-fill' + (pct >= 90 ? ' danger' : pct >= 75 ? ' warn' : '');
@@ -837,7 +922,7 @@ document.addEventListener('DOMContentLoaded', () => {
       else state.selectedFiles.delete(entry.path);
     });
     renderFileList();
-    updateDeleteSelBtn();
+    updateSelectionButtons();
   });
 
   // Sort headers
@@ -847,6 +932,17 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Editor save
   document.getElementById('editor-save').addEventListener('click', saveEditor);
+
+  // Copy confirm
+  document.getElementById('copy-confirm').addEventListener('click', doCopy);
+  document.getElementById('copy-dst').addEventListener('keydown', e => {
+    if (e.key === 'Enter') doCopy();
+  });
+
+  // Download selected
+  document.getElementById('btn-download-sel').addEventListener('click', () => {
+    downloadZip([...state.selectedFiles]);
+  });
 
   // Move confirm
   document.getElementById('move-confirm').addEventListener('click', doMove);

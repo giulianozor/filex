@@ -93,6 +93,12 @@
           </svg>
           Delete Selected
         </button>
+        <button class="btn" id="btn-download-sel" title="Download selected as zip" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download Selected
+        </button>
         <button class="btn" id="btn-refresh" title="Refresh (F5)">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
@@ -162,6 +168,26 @@
     <div class="modal-footer">
       <button class="btn" data-close="modal-move">Cancel</button>
       <button class="btn primary" id="move-confirm">Move</button>
+    </div>
+  </div>
+</div>
+
+<!-- Copy modal -->
+<div class="modal-backdrop" id="modal-copy">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Copy To</span>
+      <button class="modal-close" data-close="modal-copy">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Destination path</label>
+        <input type="text" class="form-input" id="copy-dst" placeholder="/destination/folder" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-copy">Cancel</button>
+      <button class="btn primary" id="copy-confirm">Copy</button>
     </div>
   </div>
 </div>

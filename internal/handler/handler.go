@@ -97,6 +97,8 @@ h.mux.HandleFunc("/api/mkdir", h.authMiddleware(h.handleMkdir))
 h.mux.HandleFunc("/api/rename", h.authMiddleware(h.handleRename))
 h.mux.HandleFunc("/api/delete", h.authMiddleware(h.handleDelete))
 h.mux.HandleFunc("/api/move", h.authMiddleware(h.handleMove))
+h.mux.HandleFunc("/api/copy", h.authMiddleware(h.handleCopy))
+h.mux.HandleFunc("/api/zip-download", h.authMiddleware(h.handleZipDownload))
 h.mux.HandleFunc("/api/read", h.authMiddleware(h.handleRead))
 h.mux.HandleFunc("/api/write", h.authMiddleware(h.handleWrite))
 h.mux.HandleFunc("/api/info", h.authMiddleware(h.handleInfo))
@@ -518,6 +520,61 @@ writeError(w, http.StatusBadRequest, err.Error())
 return
 }
 writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleCopy(w http.ResponseWriter, r *http.Request) {
+if r.Method != http.MethodPost {
+writeError(w, http.StatusMethodNotAllowed, "POST required")
+return
+}
+var req struct {
+Src string `json:"src"`
+Dst string `json:"dst"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+writeError(w, http.StatusBadRequest, err.Error())
+return
+}
+if req.Src == "" || req.Dst == "" {
+writeError(w, http.StatusBadRequest, "src and dst required")
+return
+}
+if err := h.fsForRequest(r).Copy(req.Src, req.Dst); err != nil {
+writeError(w, http.StatusBadRequest, err.Error())
+return
+}
+writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleZipDownload(w http.ResponseWriter, r *http.Request) {
+if r.Method != http.MethodPost {
+writeError(w, http.StatusMethodNotAllowed, "POST required")
+return
+}
+var req struct {
+Paths []string `json:"paths"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+writeError(w, http.StatusBadRequest, err.Error())
+return
+}
+if len(req.Paths) == 0 {
+writeError(w, http.StatusBadRequest, "paths required")
+return
+}
+name := "download"
+if len(req.Paths) == 1 {
+base := filepath.Base(req.Paths[0])
+if base != "/" && base != "." && base != "" {
+name = base
+}
+}
+w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.zip"`, name))
+w.Header().Set("Content-Type", "application/zip")
+if err := h.fsForRequest(r).ZipPaths(w, req.Paths); err != nil {
+// Response headers already sent; cannot write JSON error.
+return
+}
 }
 
 func (h *Handler) handleRead(w http.ResponseWriter, r *http.Request) {
