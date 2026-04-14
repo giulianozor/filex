@@ -327,7 +327,11 @@ return nil
 return entry, err
 }
 
-// OpenForDownload returns a ReadCloser for the file at path.
+// OpenForDownload returns an open file handle for the file at path.
+// Access is checked at open time (inside runAs) using the login user's
+// credentials; the returned *os.File is safe to read after runAs returns
+// because Unix file descriptors retain their access rights for the lifetime
+// of the handle regardless of later credential changes on the thread.
 func (f *FS) OpenForDownload(path string) (*os.File, error) {
 var file *os.File
 err := f.runAs(func() error {
@@ -476,6 +480,8 @@ func (f *FS) copyFile(src, dst string, mode os.FileMode) error {
 // ZipPaths streams a zip archive containing all specified paths to dst.
 // Each path may be a file or a directory (archived recursively).
 // The zip entries are named relative to the parent directory of each path.
+// All file opens, reads, and zip writing happen inside runAs so that every
+// I/O operation is performed with the login user's credentials.
 func (f *FS) ZipPaths(dst io.Writer, paths []string) error {
 	return f.runAs(func() error {
 		zw := zip.NewWriter(dst)
