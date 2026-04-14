@@ -649,7 +649,7 @@ return
 key := h.favKeyForRequest(r)
 h.favMu.Lock()
 favs := h.runtimeFavs[key]
-updated := favs[:0]
+updated := make([]config.Favourite, 0, len(favs))
 for _, f := range favs {
 if f.Path != req.Path {
 updated = append(updated, f)
