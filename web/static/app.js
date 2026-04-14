@@ -574,6 +574,10 @@ async function doMove() {
   const dst = document.getElementById('move-dst').value.trim();
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.moveSrc) ? state.moveSrc : [state.moveSrc];
+  const bar = document.getElementById('upload-progress-bar');
+  const btn = document.getElementById('move-confirm');
+  bar.classList.add('indeterminate');
+  btn.disabled = true;
   try {
     for (const src of srcs) {
       await apiPost('/api/move', { src, dst });
@@ -585,6 +589,10 @@ async function doMove() {
     loadDirectory(state.currentPath);
   } catch (e) {
     toast('Move failed: ' + e.message, 'error');
+  } finally {
+    bar.classList.remove('indeterminate');
+    bar.style.display = 'none';
+    btn.disabled = false;
   }
 }
 
@@ -636,7 +644,9 @@ async function doCopy() {
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.copySrc) ? state.copySrc : [state.copySrc];
   const bar = document.getElementById('upload-progress-bar');
+  const btn = document.getElementById('copy-confirm');
   bar.classList.add('indeterminate');
+  btn.disabled = true;
   try {
     for (const src of srcs) {
       await apiPost('/api/copy', { src, dst });
@@ -651,6 +661,7 @@ async function doCopy() {
   } finally {
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
+    btn.disabled = false;
   }
 }
 
