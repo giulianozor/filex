@@ -6,6 +6,7 @@ import (
 "log"
 "net/http"
 "os"
+"path/filepath"
 
 authlib "github.com/giulianozor/filex/internal/auth"
 "github.com/giulianozor/filex/internal/config"
@@ -69,7 +70,13 @@ if err != nil {
 log.Fatalf("Failed to load static assets: %v", err)
 }
 
-authStore := authlib.NewStore()
+// Derive the session file path from the config path so persistent (remember-me)
+// sessions survive service restarts.
+sessionPath := ""
+if *configPath != "" {
+sessionPath = filepath.Join(filepath.Dir(*configPath), "filex_sessions.json")
+}
+authStore := authlib.NewStoreWithPath(sessionPath)
 
 h := handler.New(globalFS, cfg, staticFS, authStore, userFSMap, *configPath)
 

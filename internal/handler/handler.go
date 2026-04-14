@@ -341,11 +341,19 @@ writeError(w, http.StatusUnauthorized, "invalid credentials")
 return
 }
 
-// Always use the configured session TTL for the server-side session.
-// The "remember me" flag only controls whether the cookie is persistent
-// (survives browser restarts) or browser-session-scoped (expires on close).
 sessionTTL := h.cfg.SessionTTL()
-token, err := h.authStore.CreateWithTTL(req.Username, sessionTTL)
+
+var token string
+var err error
+if req.RememberMe {
+// Persistent session: saved to disk so it survives service restarts.
+// A persistent cookie is set so the browser retains it across restarts too.
+token, err = h.authStore.CreatePersistentWithTTL(req.Username, sessionTTL)
+} else {
+// In-memory session: lost on service restart (intentional).
+// A session cookie is set so the browser discards it when closed.
+token, err = h.authStore.CreateWithTTL(req.Username, sessionTTL)
+}
 if err != nil {
 writeError(w, http.StatusInternalServerError, "could not create session")
 return
