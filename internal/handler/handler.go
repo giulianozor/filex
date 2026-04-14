@@ -31,10 +31,12 @@ authStore *authlib.Store        // nil when auth disabled
 mux       *http.ServeMux
 favMu       sync.RWMutex
 runtimeFavs map[string][]config.Favourite // key: username or "" for global
+cfgMu      sync.Mutex // protects cfg.Favourites / cfg.Users[i].Favourites during save
+configPath string     // path to the loaded config.yaml; empty = no persistence
 }
 
 // New creates a Handler. If cfg.AuthRequired(), users must contain one FS per user.
-func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry) *Handler {
+func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry, configPath string) *Handler {
 // Initialize runtime favourites from config, preserving the existing
 // fallback: per-user favs take priority; users without their own fall back
 // to the global list.
@@ -61,6 +63,7 @@ users:       users,
 authStore:   authStore,
 mux:         http.NewServeMux(),
 runtimeFavs: runtimeFavs,
+configPath:  configPath,
 }
 h.registerRoutes(staticFS)
 return h
@@ -213,6 +216,35 @@ h.favMu.RUnlock()
 return favs
 }
 
+// persistFavourites writes the favourites for key back to the config file.
+// It is a no-op when no config file was loaded (configPath == "").
+func (h *Handler) persistFavourites(key string, favs []config.Favourite) {
+if h.configPath == "" {
+return
+}
+h.cfgMu.Lock()
+defer h.cfgMu.Unlock()
+if key == "" {
+h.cfg.Favourites = favs
+} else {
+for i := range h.cfg.Users {
+if h.cfg.Users[i].Username == key {
+h.cfg.Users[i].Favourites = favs
+break
+}
+}
+}
+_ = h.cfg.Save(h.configPath)
+}
+
+// copyFavs returns a copy of the favourites slice for key, called with favMu held.
+func (h *Handler) copyFavs(key string) []config.Favourite {
+src := h.runtimeFavs[key]
+dst := make([]config.Favourite, len(src))
+copy(dst, src)
+return dst
+}
+
 // showDotfilesForRequest resolves whether to show dot files for this request.
 func (h *Handler) showDotfilesForRequest(r *http.Request) bool {
 q := r.URL.Query().Get("dotfiles")
@@ -289,8 +321,9 @@ return
 }
 
 var req struct {
-Username string `json:"username"`
-Password string `json:"password"`
+Username   string `json:"username"`
+Password   string `json:"password"`
+RememberMe bool   `json:"remember_me"`
 }
 if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 writeError(w, http.StatusBadRequest, "invalid request body")
@@ -308,13 +341,25 @@ writeError(w, http.StatusUnauthorized, "invalid credentials")
 return
 }
 
-token, err := h.authStore.Create(req.Username)
+var (
+token string
+err   error
+)
+if req.RememberMe {
+token, err = h.authStore.CreateWithTTL(req.Username, authlib.RememberMeTTL)
+} else {
+token, err = h.authStore.Create(req.Username)
+}
 if err != nil {
 writeError(w, http.StatusInternalServerError, "could not create session")
 return
 }
 
+if req.RememberMe {
+authlib.SetCookieWithTTL(w, token, authlib.RememberMeTTL)
+} else {
 authlib.SetCookie(w, token)
+}
 writeJSON(w, map[string]string{"status": "ok", "username": req.Username})
 }
 
@@ -683,7 +728,9 @@ return
 }
 }
 h.runtimeFavs[key] = append(favs, config.Favourite{Name: req.Name, Path: req.Path})
+updated := h.copyFavs(key)
 h.favMu.Unlock()
+h.persistFavourites(key, updated)
 writeJSON(w, map[string]string{"status": "ok"})
 }
 
@@ -713,7 +760,9 @@ updated = append(updated, f)
 }
 }
 h.runtimeFavs[key] = updated
+saveFavs := h.copyFavs(key)
 h.favMu.Unlock()
+h.persistFavourites(key, saveFavs)
 writeJSON(w, map[string]string{"status": "ok"})
 }
 

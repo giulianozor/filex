@@ -11,11 +11,15 @@ import (
 const cookieName = "filex_session"
 const tokenTTL = 24 * time.Hour
 
+// RememberMeTTL is the session lifetime when the user selects "remember me".
+const RememberMeTTL = 30 * 24 * time.Hour
+
 // Session holds a logged-in user's session data.
 type Session struct {
 	Token     string
 	Username  string
 	CreatedAt time.Time
+	TTL       time.Duration // effective lifetime of this session
 }
 
 // Store is an in-memory session store.
@@ -33,13 +37,18 @@ func NewStore() *Store {
 
 // Create generates a new session token for username and stores it.
 func (s *Store) Create(username string) (string, error) {
+	return s.CreateWithTTL(username, tokenTTL)
+}
+
+// CreateWithTTL generates a new session token for username with a custom TTL.
+func (s *Store) CreateWithTTL(username string, ttl time.Duration) (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	token := hex.EncodeToString(b)
 	s.mu.Lock()
-	s.sessions[token] = &Session{Token: token, Username: username, CreatedAt: time.Now()}
+	s.sessions[token] = &Session{Token: token, Username: username, CreatedAt: time.Now(), TTL: ttl}
 	s.mu.Unlock()
 	return token, nil
 }
@@ -52,7 +61,7 @@ func (s *Store) Get(token string) *Session {
 	if sess == nil {
 		return nil
 	}
-	if time.Since(sess.CreatedAt) > tokenTTL {
+	if time.Since(sess.CreatedAt) > sess.TTL {
 		s.Delete(token)
 		return nil
 	}
@@ -73,7 +82,7 @@ func (s *Store) cleanup() {
 	for range ticker.C {
 		s.mu.Lock()
 		for k, v := range s.sessions {
-			if time.Since(v.CreatedAt) > tokenTTL {
+			if time.Since(v.CreatedAt) > v.TTL {
 				delete(s.sessions, k)
 			}
 		}
@@ -90,15 +99,20 @@ func (s *Store) FromRequest(r *http.Request) *Session {
 	return s.Get(c.Value)
 }
 
-// SetCookie sets the session cookie on the response.
+// SetCookie sets the session cookie on the response with the default TTL.
 func SetCookie(w http.ResponseWriter, token string) {
+	SetCookieWithTTL(w, token, tokenTTL)
+}
+
+// SetCookieWithTTL sets the session cookie with a specific TTL.
+func SetCookieWithTTL(w http.ResponseWriter, token string, ttl time.Duration) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     cookieName,
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int(tokenTTL.Seconds()),
+		MaxAge:   int(ttl.Seconds()),
 	})
 }
 

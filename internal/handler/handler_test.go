@@ -32,7 +32,7 @@ func setupHandler(t *testing.T) (*Handler, string) {
 			{Name: "Home", Path: "/"},
 		},
 	}
-	h := New(fsys, cfg, http.Dir(dir), nil, nil)
+	h := New(fsys, cfg, http.Dir(dir), nil, nil, "")
 	return h, dir
 }
 
@@ -254,6 +254,74 @@ func TestHandleZipDownload_Dir(t *testing.T) {
 		t.Errorf("Content-Disposition = %q, expected mydir.zip", cd)
 	}
 }
+
+func TestFavouritesPersistence(t *testing.T) {
+	dir := t.TempDir()
+	fsys, err := fslib.New(dir)
+	if err != nil {
+		t.Fatalf("fs.New: %v", err)
+	}
+	// Write a minimal config file.
+	cfgPath := filepath.Join(dir, "config.yaml")
+	initialCfg := &config.Config{
+		Host:         "0.0.0.0",
+		Port:         8080,
+		BasePath:     dir,
+		ShowDotfiles: false,
+		Favourites:   []config.Favourite{{Name: "Home", Path: "/"}},
+	}
+	if err := initialCfg.Save(cfgPath); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	// Create a subdirectory to add as a favourite.
+	subdir := filepath.Join(dir, "docs")
+	if err := os.Mkdir(subdir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	h := New(fsys, initialCfg, http.Dir(dir), nil, nil, cfgPath)
+
+	// Add a favourite.
+	body := `{"path":"/docs","name":"Docs"}`
+	rr := doRequest(t, h, http.MethodPost, "/api/favourites/add", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("add status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify the config file was updated.
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	found := false
+	for _, f := range saved.Favourites {
+		if f.Path == "/docs" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("added favourite not persisted to config file")
+	}
+
+	// Remove the favourite.
+	rmBody := `{"path":"/docs"}`
+	rr = doRequest(t, h, http.MethodPost, "/api/favourites/remove", strings.NewReader(rmBody))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("remove status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+
+	// Verify removal was persisted.
+	saved, err = config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload config after remove: %v", err)
+	}
+	for _, f := range saved.Favourites {
+		if f.Path == "/docs" {
+			t.Error("removed favourite still present in config file")
+		}
+	}
+}
+
 
 func TestHandleConfig(t *testing.T) {
 	h, _ := setupHandler(t)

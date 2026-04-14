@@ -35,6 +35,25 @@ type Config struct {
 	Users        []User      `yaml:"users"`
 }
 
+// Save writes the current config to path as YAML.
+// If path is empty, Save is a no-op and returns nil.
+// The write is performed atomically: the data is first written to a temporary
+// file next to the target and then renamed into place.
+func (c *Config) Save(path string) error {
+	if path == "" {
+		return nil
+	}
+	data, err := yaml.Marshal(c)
+	if err != nil {
+		return err
+	}
+	tmp := filepath.Join(filepath.Dir(path), filepath.Base(path)+".tmp")
+	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
+
 func Load(path string) (*Config, error) {
 	cfg := &Config{
 		Host:         "0.0.0.0",
