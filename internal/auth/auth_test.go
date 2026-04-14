@@ -55,7 +55,7 @@ func TestExpiredSession(t *testing.T) {
 	token, _ := s.Create("dave")
 	// Manually expire the session
 	s.mu.Lock()
-	s.sessions[token].CreatedAt = time.Now().Add(-tokenTTL - time.Minute)
+	s.sessions[token].CreatedAt = time.Now().Add(-DefaultSessionTTL - time.Minute)
 	s.mu.Unlock()
 
 	if s.Get(token) != nil {

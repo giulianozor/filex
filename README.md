@@ -40,6 +40,7 @@ host: "0.0.0.0"
 port: 8080
 base_path: "/data"
 show_dotfiles: false
+session_ttl_days: 30   # session lifetime in days (default: 30)
 favourites:
   - name: "Home"
     path: "/"
@@ -54,6 +55,7 @@ path jail, favourites, and optional UID/GID for file ownership.
 host: "0.0.0.0"
 port: 8080
 show_dotfiles: false
+session_ttl_days: 30   # session lifetime in days (default: 30)
 
 users:
   - username: "alice"

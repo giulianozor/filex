@@ -9,10 +9,11 @@ import (
 )
 
 const cookieName = "filex_session"
-const tokenTTL = 30 * 24 * time.Hour
 
-// RememberMeTTL is the session lifetime when the user selects "remember me".
-const RememberMeTTL = 30 * 24 * time.Hour
+// DefaultSessionTTL is used by Create() when no TTL is specified (e.g. in tests
+// or when auth is called without a config-driven TTL). For production use the
+// configured TTL is passed explicitly via CreateWithTTL.
+const DefaultSessionTTL = 30 * 24 * time.Hour
 
 // Session holds a logged-in user's session data.
 type Session struct {
@@ -35,9 +36,9 @@ func NewStore() *Store {
 	return s
 }
 
-// Create generates a new session token for username and stores it.
+// Create generates a new session token for username with the default TTL.
 func (s *Store) Create(username string) (string, error) {
-	return s.CreateWithTTL(username, tokenTTL)
+	return s.CreateWithTTL(username, DefaultSessionTTL)
 }
 
 // CreateWithTTL generates a new session token for username with a custom TTL.
@@ -101,7 +102,20 @@ func (s *Store) FromRequest(r *http.Request) *Session {
 
 // SetCookie sets the session cookie on the response with the default TTL.
 func SetCookie(w http.ResponseWriter, token string) {
-	SetCookieWithTTL(w, token, tokenTTL)
+	SetCookieWithTTL(w, token, DefaultSessionTTL)
+}
+
+// SetSessionCookie sets a browser-session-scoped cookie (no MaxAge / Expires).
+// The browser will discard it when the window is closed.
+func SetSessionCookie(w http.ResponseWriter, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     cookieName,
+		Value:    token,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		// MaxAge intentionally omitted → browser session cookie
+	})
 }
 
 // SetCookieWithTTL sets the session cookie with a specific TTL.

@@ -341,24 +341,22 @@ writeError(w, http.StatusUnauthorized, "invalid credentials")
 return
 }
 
-var (
-token string
-err   error
-)
-if req.RememberMe {
-token, err = h.authStore.CreateWithTTL(req.Username, authlib.RememberMeTTL)
-} else {
-token, err = h.authStore.Create(req.Username)
-}
+// Always use the configured session TTL for the server-side session.
+// The "remember me" flag only controls whether the cookie is persistent
+// (survives browser restarts) or browser-session-scoped (expires on close).
+sessionTTL := h.cfg.SessionTTL()
+token, err := h.authStore.CreateWithTTL(req.Username, sessionTTL)
 if err != nil {
 writeError(w, http.StatusInternalServerError, "could not create session")
 return
 }
 
 if req.RememberMe {
-authlib.SetCookieWithTTL(w, token, authlib.RememberMeTTL)
+// Persistent cookie: survives browser restarts for the full session TTL.
+authlib.SetCookieWithTTL(w, token, sessionTTL)
 } else {
-authlib.SetCookie(w, token)
+// Session cookie: browser discards it when the window/tab is closed.
+authlib.SetSessionCookie(w, token)
 }
 writeJSON(w, map[string]string{"status": "ok", "username": req.Username})
 }
@@ -768,9 +766,10 @@ writeJSON(w, map[string]string{"status": "ok"})
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
 writeJSON(w, map[string]any{
-"host":          h.cfg.Host,
-"port":          h.cfg.Port,
-"show_dotfiles": h.showDotfilesForRequest(r),
-"auth_required": h.cfg.AuthRequired(),
+"host":             h.cfg.Host,
+"port":             h.cfg.Port,
+"show_dotfiles":    h.showDotfilesForRequest(r),
+"auth_required":    h.cfg.AuthRequired(),
+"session_ttl_days": h.cfg.SessionTTLDays,
 })
 }

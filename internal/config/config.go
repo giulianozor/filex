@@ -3,6 +3,7 @@ package config
 import (
 	"os"
 	"path/filepath"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -27,12 +28,23 @@ type User struct {
 }
 
 type Config struct {
-	Host         string      `yaml:"host"`
-	Port         int         `yaml:"port"`
-	BasePath     string      `yaml:"base_path"`      // global default (used when no users configured)
-	ShowDotfiles bool        `yaml:"show_dotfiles"`
-	Favourites   []Favourite `yaml:"favourites"`
-	Users        []User      `yaml:"users"`
+	Host            string      `yaml:"host"`
+	Port            int         `yaml:"port"`
+	BasePath        string      `yaml:"base_path"`      // global default (used when no users configured)
+	ShowDotfiles    bool        `yaml:"show_dotfiles"`
+	SessionTTLDays  int         `yaml:"session_ttl_days"` // session lifetime in days; 0 = use default (30)
+	Favourites      []Favourite `yaml:"favourites"`
+	Users           []User      `yaml:"users"`
+}
+
+// SessionTTL returns the effective session duration derived from SessionTTLDays.
+// When SessionTTLDays is 0 or negative the default of 30 days is used.
+func (c *Config) SessionTTL() time.Duration {
+	days := c.SessionTTLDays
+	if days <= 0 {
+		days = 30
+	}
+	return time.Duration(days) * 24 * time.Hour
 }
 
 // Save writes the current config to path as YAML.
