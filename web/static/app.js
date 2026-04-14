@@ -275,6 +275,12 @@ function renderFileList() {
     }
 
     if (entry.is_dir) {
+      actions.appendChild(makeIconBtn(
+        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
+        'Folder info',
+        (e) => showFolderInfoPopup(entry, e.currentTarget)
+      ));
+
       const isFav = isFavourite(entry.path);
       const starBtn = makeIconBtn(
         isFav ? ICONS.starFilled : ICONS.starEmpty,
@@ -1134,4 +1140,97 @@ async function loadVersion() {
       el.textContent = 'v' + data.version;
     }
   } catch (_) { /* non-critical */ }
+}
+
+// ─── Folder info popup ────────────────────────────────────────────────────────
+let _folderInfoPopup = null;
+let _folderInfoListeners = null;
+
+function closeFolderInfoPopup() {
+  if (_folderInfoPopup) {
+    _folderInfoPopup.remove();
+    _folderInfoPopup = null;
+  }
+  if (_folderInfoListeners) {
+    document.removeEventListener('mousedown', _folderInfoListeners.onOutside);
+    document.removeEventListener('keydown', _folderInfoListeners.onKey);
+    _folderInfoListeners = null;
+  }
+}
+
+function showFolderInfoPopup(entry, anchorBtn) {
+  closeFolderInfoPopup();
+
+  const popup = document.createElement('div');
+  popup.className = 'folder-info-popup';
+  _folderInfoPopup = popup;
+
+  const title = document.createElement('div');
+  title.className = 'folder-info-popup-title';
+  title.textContent = entry.name;
+  popup.appendChild(title);
+
+  function makeRow(label, value) {
+    const row = document.createElement('div');
+    row.className = 'folder-info-popup-row';
+    const lbl = document.createElement('span');
+    lbl.className = 'folder-info-popup-label';
+    lbl.textContent = label;
+    const val = document.createElement('span');
+    val.className = 'folder-info-popup-value';
+    val.textContent = value;
+    row.appendChild(lbl);
+    row.appendChild(val);
+    return { row, val };
+  }
+
+  const { row: pathRow } = makeRow('Path', entry.path);
+  const { row: dateRow } = makeRow('Modified', formatDate(entry.mod_time));
+  const { row: sizeRow, val: sizeVal } = makeRow('Total size', '…');
+  const { row: countRow, val: countVal } = makeRow('Files', '…');
+
+  popup.appendChild(pathRow);
+  popup.appendChild(dateRow);
+  popup.appendChild(sizeRow);
+  popup.appendChild(countRow);
+
+  document.body.appendChild(popup);
+
+  // Position popup near the anchor button
+  const rect = anchorBtn.getBoundingClientRect();
+  const popupW = popup.offsetWidth || 240;
+  const popupH = popup.offsetHeight || 160;
+  let top = rect.bottom + 6;
+  let left = rect.left;
+  if (left + popupW > window.innerWidth - 8) left = window.innerWidth - popupW - 8;
+  if (top + popupH > window.innerHeight - 8) top = rect.top - popupH - 6;
+  popup.style.top = top + 'px';
+  popup.style.left = left + 'px';
+
+  // Fetch folder info from backend
+  const params = new URLSearchParams({ path: entry.path });
+  apiGet('/api/folder-info?' + params).then(data => {
+    sizeVal.textContent = formatSize(data.total_size);
+    countVal.textContent = data.file_count.toLocaleString() + (data.file_count === 1 ? ' file' : ' files');
+  }).catch(() => {
+    sizeVal.textContent = '—';
+    countVal.textContent = '—';
+  });
+
+  // Close on outside click or Escape; store refs so closeFolderInfoPopup() can remove them
+  const onOutside = (e) => {
+    if (!popup.contains(e.target) && e.target !== anchorBtn) {
+      closeFolderInfoPopup();
+    }
+  };
+  const onKey = (e) => {
+    if (e.key === 'Escape') {
+      closeFolderInfoPopup();
+    }
+  };
+  _folderInfoListeners = { onOutside, onKey };
+  setTimeout(() => {
+    document.addEventListener('mousedown', onOutside);
+    document.addEventListener('keydown', onKey);
+  }, 0);
 }

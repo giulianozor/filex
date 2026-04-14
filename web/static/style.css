@@ -618,6 +618,54 @@ td:first-child { width: 36px; padding-right: 4px; }
   flex-direction: column;
   gap: 8px;
 }
+
+/* ── Folder info popup ──────────────────────────────── */
+.folder-info-popup {
+  position: fixed;
+  z-index: 200;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+  padding: 14px 16px;
+  min-width: 220px;
+  max-width: 320px;
+  font-size: 13px;
+  color: var(--text);
+}
+.folder-info-popup-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--accent);
+}
+.folder-info-popup-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 3px 0;
+  border-bottom: 1px solid var(--border);
+}
+.folder-info-popup-row:last-child { border-bottom: none; }
+.folder-info-popup-label {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.folder-info-popup-value {
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.folder-info-popup-loading {
+  color: var(--text-dim);
+  font-style: italic;
+  text-align: center;
+  padding: 4px 0;
+}
 .toast {
   background: var(--card);
   border: 1px solid var(--border);

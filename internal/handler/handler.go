@@ -108,6 +108,7 @@ h.mux.HandleFunc("/api/zip-download", h.authMiddleware(h.handleZipDownload))
 h.mux.HandleFunc("/api/read", h.authMiddleware(h.handleRead))
 h.mux.HandleFunc("/api/write", h.authMiddleware(h.handleWrite))
 h.mux.HandleFunc("/api/info", h.authMiddleware(h.handleInfo))
+h.mux.HandleFunc("/api/folder-info", h.authMiddleware(h.handleFolderInfo))
 h.mux.HandleFunc("/api/favourites", h.authMiddleware(h.handleFavourites))
 h.mux.HandleFunc("/api/favourites/add", h.authMiddleware(h.handleFavouritesAdd))
 h.mux.HandleFunc("/api/favourites/remove", h.authMiddleware(h.handleFavouritesRemove))
@@ -687,6 +688,31 @@ return
 }
 usage, _ := h.fsForRequest(r).DiskUsageAt(path)
 writeJSON(w, map[string]any{"file": entry, "disk": usage})
+}
+
+func (h *Handler) handleFolderInfo(w http.ResponseWriter, r *http.Request) {
+path := r.URL.Query().Get("path")
+if path == "" {
+writeError(w, http.StatusBadRequest, "path required")
+return
+}
+entry, err := h.fsForRequest(r).FileInfo(path)
+if err != nil {
+writeError(w, http.StatusNotFound, err.Error())
+return
+}
+if !entry.IsDir {
+writeError(w, http.StatusBadRequest, "path is not a directory")
+return
+}
+totalSize, fileCount, _ := h.fsForRequest(r).DirSize(path)
+writeJSON(w, map[string]any{
+"name":       entry.Name,
+"path":       entry.Path,
+"mod_time":   entry.ModTime,
+"total_size": totalSize,
+"file_count": fileCount,
+})
 }
 
 func (h *Handler) handleFavourites(w http.ResponseWriter, r *http.Request) {
