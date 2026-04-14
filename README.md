@@ -103,7 +103,7 @@ Files are served from `./data` and config is read from `./config.yaml`.
 |------------------|--------------------------------------------------|
 | `build`          | Build binary to `bin/filex`                      |
 | `test`           | Run all tests                                    |
-| `install`        | Build and install binary to `/usr/local/bin`     |
+| `install`        | Build and install `filex` and `filex-passwd` to `/usr/local/bin` |
 | `install-openrc` | Install OpenRC init script, create `filex` user and log directory|
 | `clean`          | Remove build artifacts                           |
 | `docker`         | Build Docker image `filex:latest`                |
