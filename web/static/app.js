@@ -502,10 +502,67 @@ async function doMkdir() {
 }
 
 // ─── Move ─────────────────────────────────────────────────────────────────────
+
+// Per-modal browsed path
+const folderBrowserPath = { move: '/', copy: '/' };
+
+async function loadFolderBrowser(mode, path) {
+  folderBrowserPath[mode] = path;
+  const listEl  = document.getElementById(mode + '-browser-list');
+  const crumbEl = document.getElementById(mode + '-browser-crumb');
+  const upBtn   = document.getElementById(mode + '-browser-up');
+
+  crumbEl.textContent = path;
+  upBtn.disabled = (path === '/');
+
+  listEl.innerHTML = '<div class="folder-browser-empty">Loading…</div>';
+  try {
+    const params  = new URLSearchParams({ path, dotfiles: state.showDotfiles });
+    const entries = await apiGet('/api/list?' + params);
+    listEl.innerHTML = '';
+
+    const dirs = (entries || []).filter(e => e.is_dir);
+    if (dirs.length === 0) {
+      listEl.innerHTML = '<div class="folder-browser-empty">No subfolders</div>';
+      return;
+    }
+
+    dirs.forEach(dir => {
+      const item = document.createElement('div');
+      item.className = 'folder-browser-item';
+      const iconEl = document.createElement('span');
+      iconEl.innerHTML = ICONS.dir; // static constant — safe
+      item.appendChild(iconEl);
+      const nameSpan = document.createElement('span');
+      nameSpan.textContent = dir.name;
+      item.appendChild(nameSpan);
+      item.onclick = () => {
+        document.getElementById(mode + '-dst').value = dir.path;
+        loadFolderBrowser(mode, dir.path);
+      };
+      listEl.appendChild(item);
+    });
+  } catch (e) {
+    listEl.innerHTML = '<div class="folder-browser-empty" style="color:var(--danger)">Error loading folders</div>';
+  }
+}
+
+function folderBrowserUp(mode) {
+  const cur = folderBrowserPath[mode];
+  if (cur === '/') return;
+  const parts  = cur.split('/').filter(Boolean);
+  parts.pop();
+  const parent = parts.length === 0 ? '/' : '/' + parts.join('/');
+  document.getElementById(mode + '-dst').value = parent;
+  loadFolderBrowser(mode, parent);
+}
+
 function openMoveModal(path) {
   state.moveSrc = path;
-  document.getElementById('move-dst').value = '';
+  const initPath = state.currentPath;
+  document.getElementById('move-dst').value = initPath;
   openModal('modal-move');
+  loadFolderBrowser('move', initPath);
   setTimeout(() => document.getElementById('move-dst').focus(), 50);
 }
 
@@ -558,8 +615,10 @@ async function downloadZip(paths) {
 // ─── Copy ─────────────────────────────────────────────────────────────────────
 function openCopyModal(path) {
   state.copySrc = path;
-  document.getElementById('copy-dst').value = '';
+  const initPath = state.currentPath;
+  document.getElementById('copy-dst').value = initPath;
   openModal('modal-copy');
+  loadFolderBrowser('copy', initPath);
   setTimeout(() => document.getElementById('copy-dst').focus(), 50);
 }
 
@@ -938,6 +997,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('copy-dst').addEventListener('keydown', e => {
     if (e.key === 'Enter') doCopy();
   });
+  document.getElementById('copy-browser-up').addEventListener('click', () => folderBrowserUp('copy'));
 
   // Download selected
   document.getElementById('btn-download-sel').addEventListener('click', () => {
@@ -949,6 +1009,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('move-dst').addEventListener('keydown', e => {
     if (e.key === 'Enter') doMove();
   });
+  document.getElementById('move-browser-up').addEventListener('click', () => folderBrowserUp('move'));
 
   // Modal close buttons (data-close attribute)
   document.querySelectorAll('[data-close]').forEach(btn => {

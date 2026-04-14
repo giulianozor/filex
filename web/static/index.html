@@ -156,13 +156,23 @@
 <div class="modal-backdrop" id="modal-move">
   <div class="modal">
     <div class="modal-header">
-      <span class="modal-title">Move File</span>
+      <span class="modal-title">Move To</span>
       <button class="modal-close" data-close="modal-move">✕</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
         <label class="form-label">Destination path</label>
         <input type="text" class="form-input" id="move-dst" placeholder="/destination/folder" autocomplete="off">
+      </div>
+      <div class="folder-browser">
+        <div class="folder-browser-nav">
+          <button class="btn folder-browser-up" id="move-browser-up" title="Go up one level">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            Up
+          </button>
+          <span class="folder-browser-crumb" id="move-browser-crumb"></span>
+        </div>
+        <div class="folder-browser-list" id="move-browser-list"></div>
       </div>
     </div>
     <div class="modal-footer">
@@ -183,6 +193,16 @@
       <div class="form-group">
         <label class="form-label">Destination path</label>
         <input type="text" class="form-input" id="copy-dst" placeholder="/destination/folder" autocomplete="off">
+      </div>
+      <div class="folder-browser">
+        <div class="folder-browser-nav">
+          <button class="btn folder-browser-up" id="copy-browser-up" title="Go up one level">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            Up
+          </button>
+          <span class="folder-browser-crumb" id="copy-browser-crumb"></span>
+        </div>
+        <div class="folder-browser-list" id="copy-browser-list"></div>
       </div>
     </div>
     <div class="modal-footer">
