@@ -550,7 +550,58 @@ td:first-child { width: 36px; padding-right: 4px; }
   font-style: italic;
 }
 
-/* ── Toasts ───────────────────────────────────────── */
+/* ── Modal Favourites Picker ─────────────────────── */
+.modal-favs {
+  margin-bottom: 12px;
+  display: none; /* shown via JS when there are favourites */
+}
+
+.modal-favs-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+.modal-favs-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.modal-fav-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  max-width: 160px;
+  overflow: hidden;
+}
+
+.modal-fav-chip:hover {
+  background: var(--card-hover);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.modal-fav-chip svg { flex-shrink: 0; }
+
+.modal-fav-chip span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+
 #toast-container {
   position: fixed;
   bottom: 20px;

@@ -510,6 +510,37 @@ async function doMkdir() {
 // Per-modal browsed path
 const folderBrowserPath = { move: '/', copy: '/' };
 
+// Renders favourite folder chips inside a move/copy modal so the user can
+// jump to a favourite destination with a single click.
+function renderModalFavourites(mode) {
+  const container = document.getElementById(mode + '-favs');
+  const list = document.getElementById(mode + '-favs-list');
+  const favs = state.favourites || [];
+  if (favs.length === 0) {
+    container.style.display = 'none';
+    return;
+  }
+  container.style.display = 'block';
+  list.innerHTML = '';
+  favs.forEach(fav => {
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'modal-fav-chip';
+    chip.title = fav.path;
+    const iconEl = document.createElement('span');
+    iconEl.innerHTML = ICONS.dir; // static constant — safe
+    chip.appendChild(iconEl);
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = fav.name;
+    chip.appendChild(nameSpan);
+    chip.onclick = () => {
+      document.getElementById(mode + '-dst').value = fav.path;
+      loadFolderBrowser(mode, fav.path);
+    };
+    list.appendChild(chip);
+  });
+}
+
 async function loadFolderBrowser(mode, path) {
   folderBrowserPath[mode] = path;
   const listEl  = document.getElementById(mode + '-browser-list');
@@ -565,6 +596,7 @@ function openMoveModal(pathOrPaths) {
   state.moveSrc = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
   const initPath = state.currentPath;
   document.getElementById('move-dst').value = initPath;
+  renderModalFavourites('move');
   openModal('modal-move');
   loadFolderBrowser('move', initPath);
   setTimeout(() => document.getElementById('move-dst').focus(), 50);
@@ -574,6 +606,10 @@ async function doMove() {
   const dst = document.getElementById('move-dst').value.trim();
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.moveSrc) ? state.moveSrc : [state.moveSrc];
+  const bar = document.getElementById('upload-progress-bar');
+  const btn = document.getElementById('move-confirm');
+  bar.classList.add('indeterminate');
+  btn.disabled = true;
   try {
     for (const src of srcs) {
       await apiPost('/api/move', { src, dst });
@@ -585,6 +621,10 @@ async function doMove() {
     loadDirectory(state.currentPath);
   } catch (e) {
     toast('Move failed: ' + e.message, 'error');
+  } finally {
+    bar.classList.remove('indeterminate');
+    bar.style.display = 'none';
+    btn.disabled = false;
   }
 }
 
@@ -626,6 +666,7 @@ function openCopyModal(pathOrPaths) {
   state.copySrc = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
   const initPath = state.currentPath;
   document.getElementById('copy-dst').value = initPath;
+  renderModalFavourites('copy');
   openModal('modal-copy');
   loadFolderBrowser('copy', initPath);
   setTimeout(() => document.getElementById('copy-dst').focus(), 50);
@@ -636,7 +677,9 @@ async function doCopy() {
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.copySrc) ? state.copySrc : [state.copySrc];
   const bar = document.getElementById('upload-progress-bar');
+  const btn = document.getElementById('copy-confirm');
   bar.classList.add('indeterminate');
+  btn.disabled = true;
   try {
     for (const src of srcs) {
       await apiPost('/api/copy', { src, dst });
@@ -651,6 +694,7 @@ async function doCopy() {
   } finally {
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
+    btn.disabled = false;
   }
 }
 
