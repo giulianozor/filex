@@ -1,4 +1,5 @@
 BINARY  := filex
+PASSWD_BINARY := filex-passwd
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_FLAGS := -ldflags "-X main.Version=$(VERSION)"
 INSTALL_DIR ?= /usr/local/bin
@@ -10,6 +11,7 @@ all: build
 build:
 	mkdir -p bin
 	go build $(BUILD_FLAGS) -o bin/$(BINARY) ./cmd/filex
+	go build -o bin/$(PASSWD_BINARY) ./cmd/filex-passwd
 
 test:
 	go test ./...
