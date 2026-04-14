@@ -71,6 +71,13 @@ users:
     base_path: "/data/bob"
 ```
 
+> **Note**: when `uid` or `gid` is set for any user, filex uses `setreuid`/`setregid`
+> to run all file-system operations with that user's credentials.  This requires the
+> server to be started as **root** (or to hold `CAP_SETUID`/`CAP_SETGID`).  If the
+> server is not root and uid/gid are configured, every file-system call will fail with
+> a *"setegid: operation not permitted"* error after login.  Omit `uid`/`gid` from
+> the config (or start as root) to avoid this.
+
 ### Generating password hashes
 
 ```bash
@@ -124,7 +131,7 @@ All endpoints are under `/api/`:
 
 ```bash
 # Install binary and OpenRC init script
-# (creates the filex system user and /var/log/filex if they do not exist)
+# (creates /var/log/filex if it does not exist)
 make install
 make install-openrc
 rc-update add filex default
