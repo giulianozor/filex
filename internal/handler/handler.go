@@ -8,6 +8,7 @@ import (
 "path/filepath"
 "strconv"
 "strings"
+"sync"
 
 authlib "github.com/giulianozor/filex/internal/auth"
 "github.com/giulianozor/filex/internal/config"
@@ -28,16 +29,38 @@ globalFS  *fslib.FS
 users     map[string]*userEntry // nil when auth disabled
 authStore *authlib.Store        // nil when auth disabled
 mux       *http.ServeMux
+favMu       sync.RWMutex
+runtimeFavs map[string][]config.Favourite // key: username or "" for global
 }
 
 // New creates a Handler. If cfg.AuthRequired(), users must contain one FS per user.
 func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry) *Handler {
+// Initialize runtime favourites from config, preserving the existing
+// fallback: per-user favs take priority; users without their own fall back
+// to the global list.
+runtimeFavs := make(map[string][]config.Favourite)
+globalFavs := make([]config.Favourite, len(cfg.Favourites))
+copy(globalFavs, cfg.Favourites)
+runtimeFavs[""] = globalFavs
+for _, u := range cfg.Users {
+var uf []config.Favourite
+if len(u.Favourites) > 0 {
+uf = make([]config.Favourite, len(u.Favourites))
+copy(uf, u.Favourites)
+} else {
+uf = make([]config.Favourite, len(cfg.Favourites))
+copy(uf, cfg.Favourites)
+}
+runtimeFavs[u.Username] = uf
+}
+
 h := &Handler{
-cfg:       cfg,
-globalFS:  globalFS,
-users:     users,
-authStore: authStore,
-mux:       http.NewServeMux(),
+cfg:         cfg,
+globalFS:    globalFS,
+users:       users,
+authStore:   authStore,
+mux:         http.NewServeMux(),
+runtimeFavs: runtimeFavs,
 }
 h.registerRoutes(staticFS)
 return h
@@ -78,6 +101,8 @@ h.mux.HandleFunc("/api/read", h.authMiddleware(h.handleRead))
 h.mux.HandleFunc("/api/write", h.authMiddleware(h.handleWrite))
 h.mux.HandleFunc("/api/info", h.authMiddleware(h.handleInfo))
 h.mux.HandleFunc("/api/favourites", h.authMiddleware(h.handleFavourites))
+h.mux.HandleFunc("/api/favourites/add", h.authMiddleware(h.handleFavouritesAdd))
+h.mux.HandleFunc("/api/favourites/remove", h.authMiddleware(h.handleFavouritesRemove))
 h.mux.HandleFunc("/api/config", h.authMiddleware(h.handleConfig))
 
 // /login is always public — serves login.html.
@@ -164,13 +189,26 @@ return e.user
 return nil
 }
 
+// favKeyForRequest returns the map key used to look up runtime favourites.
+// When auth is disabled the single global bucket ("") is used.
+func (h *Handler) favKeyForRequest(r *http.Request) string {
+if !h.cfg.AuthRequired() {
+return ""
+}
+sess := h.authStore.FromRequest(r)
+if sess == nil {
+return ""
+}
+return sess.Username
+}
+
 // favouritesForRequest returns the favourites for the current user.
 func (h *Handler) favouritesForRequest(r *http.Request) []config.Favourite {
-u := h.userForRequest(r)
-if u != nil && len(u.Favourites) > 0 {
-return u.Favourites
-}
-return h.cfg.Favourites
+key := h.favKeyForRequest(r)
+h.favMu.RLock()
+favs := h.runtimeFavs[key]
+h.favMu.RUnlock()
+return favs
 }
 
 // showDotfilesForRequest resolves whether to show dot files for this request.
@@ -530,12 +568,96 @@ if err != nil {
 writeError(w, http.StatusNotFound, err.Error())
 return
 }
-usage, _ := h.fsForRequest(r).DiskUsage()
+usage, _ := h.fsForRequest(r).DiskUsageAt(path)
 writeJSON(w, map[string]any{"file": entry, "disk": usage})
 }
 
 func (h *Handler) handleFavourites(w http.ResponseWriter, r *http.Request) {
+if r.Method != http.MethodGet {
+writeError(w, http.StatusMethodNotAllowed, "GET required")
+return
+}
 writeJSON(w, h.favouritesForRequest(r))
+}
+
+func (h *Handler) handleFavouritesAdd(w http.ResponseWriter, r *http.Request) {
+if r.Method != http.MethodPost {
+writeError(w, http.StatusMethodNotAllowed, "POST required")
+return
+}
+var req struct {
+Path string `json:"path"`
+Name string `json:"name"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+writeError(w, http.StatusBadRequest, "invalid request body")
+return
+}
+if req.Path == "" {
+writeError(w, http.StatusBadRequest, "path required")
+return
+}
+// Validate that the path is an existing directory.
+entry, err := h.fsForRequest(r).FileInfo(req.Path)
+if err != nil {
+writeError(w, http.StatusBadRequest, err.Error())
+return
+}
+if !entry.IsDir {
+writeError(w, http.StatusBadRequest, "path is not a directory")
+return
+}
+// Derive a display name from the path when none is provided.
+if req.Name == "" {
+req.Name = filepath.Base(req.Path)
+if req.Name == "/" || req.Name == "." {
+req.Name = "Root"
+}
+}
+key := h.favKeyForRequest(r)
+h.favMu.Lock()
+favs := h.runtimeFavs[key]
+// Skip duplicates.
+for _, f := range favs {
+if f.Path == req.Path {
+h.favMu.Unlock()
+writeJSON(w, map[string]string{"status": "ok"})
+return
+}
+}
+h.runtimeFavs[key] = append(favs, config.Favourite{Name: req.Name, Path: req.Path})
+h.favMu.Unlock()
+writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func (h *Handler) handleFavouritesRemove(w http.ResponseWriter, r *http.Request) {
+if r.Method != http.MethodPost {
+writeError(w, http.StatusMethodNotAllowed, "POST required")
+return
+}
+var req struct {
+Path string `json:"path"`
+}
+if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+writeError(w, http.StatusBadRequest, "invalid request body")
+return
+}
+if req.Path == "" {
+writeError(w, http.StatusBadRequest, "path required")
+return
+}
+key := h.favKeyForRequest(r)
+h.favMu.Lock()
+favs := h.runtimeFavs[key]
+updated := make([]config.Favourite, 0, len(favs))
+for _, f := range favs {
+if f.Path != req.Path {
+updated = append(updated, f)
+}
+}
+h.runtimeFavs[key] = updated
+h.favMu.Unlock()
+writeJSON(w, map[string]string{"status": "ok"})
 }
 
 func (h *Handler) handleConfig(w http.ResponseWriter, r *http.Request) {
