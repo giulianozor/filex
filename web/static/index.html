@@ -93,6 +93,18 @@
           </svg>
           Delete Selected
         </button>
+        <button class="btn" id="btn-move-sel" title="Move selected" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>
+          </svg>
+          Move Selected
+        </button>
+        <button class="btn" id="btn-copy-sel" title="Copy selected" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy Selected
+        </button>
         <button class="btn" id="btn-download-sel" title="Download selected as zip" style="display:none">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -241,6 +253,9 @@
     </div>
     <div class="modal-footer">
       <a class="btn primary" id="preview-download" href="#" download>Download</a>
+      <button class="btn" id="preview-move">Move</button>
+      <button class="btn" id="preview-copy">Copy</button>
+      <button class="btn danger" id="preview-delete">Delete</button>
       <button class="btn" data-close="modal-preview">Close</button>
     </div>
   </div>
