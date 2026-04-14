@@ -48,7 +48,7 @@ log.Fatalf("Failed to load static assets: %v", err)
 
 authStore := authlib.NewStore()
 
-h := handler.New(globalFS, cfg, staticFS, authStore, userFSMap)
+h := handler.New(globalFS, cfg, staticFS, authStore, userFSMap, *configPath)
 
 addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 if cfg.AuthRequired() {

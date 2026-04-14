@@ -635,6 +635,24 @@ body.login-page {
   margin-bottom: 12px;
 }
 
+.remember-me-group { margin-bottom: 16px; }
+.remember-me-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  cursor: pointer;
+  user-select: none;
+}
+.remember-me-label input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  accent-color: var(--accent);
+  flex-shrink: 0;
+}
+
 .password-wrap {
   position: relative;
 }
