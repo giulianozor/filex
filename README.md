@@ -92,13 +92,14 @@ Files are served from `./data` and config is read from `./config.yaml`.
 
 ## Makefile Targets
 
-| Target    | Description                            |
-|-----------|----------------------------------------|
-| `build`   | Build binary to `bin/filex`            |
-| `test`    | Run all tests                          |
-| `install` | Install binary to `$GOPATH/bin`        |
-| `clean`   | Remove build artifacts                 |
-| `docker`  | Build Docker image `filex:latest`      |
+| Target           | Description                                      |
+|------------------|--------------------------------------------------|
+| `build`          | Build binary to `bin/filex`                      |
+| `test`           | Run all tests                                    |
+| `install`        | Build and install binary to `/usr/local/bin`     |
+| `install-openrc` | Install OpenRC init script to `/etc/init.d/filex`|
+| `clean`          | Remove build artifacts                           |
+| `docker`         | Build Docker image `filex:latest`                |
 
 ## API
 
@@ -122,8 +123,9 @@ All endpoints are under `/api/`:
 ## OpenRC (Alpine Linux)
 
 ```bash
-cp init/filex.openrc /etc/init.d/filex
-chmod +x /etc/init.d/filex
+# Install binary and OpenRC init script
+make install
+make install-openrc
 rc-update add filex default
 rc-service filex start
 ```

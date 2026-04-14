@@ -4,7 +4,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 BUILD_FLAGS := -ldflags "-X main.Version=$(VERSION)"
 INSTALL_DIR ?= /usr/local/bin
 
-.PHONY: all build test install clean docker
+.PHONY: all build test install install-openrc clean docker
 
 all: build
 
@@ -16,8 +16,11 @@ build:
 test:
 	go test ./...
 
-install:
-	go install $(BUILD_FLAGS) ./cmd/filex
+install: build
+	install -Dm755 bin/$(BINARY) $(INSTALL_DIR)/$(BINARY)
+
+install-openrc:
+	install -Dm755 init/filex.openrc /etc/init.d/filex
 
 clean:
 	rm -rf bin/

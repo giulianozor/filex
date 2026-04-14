@@ -17,4 +17,5 @@ depend() {
 start_pre() {
     checkpath --directory --owner filex:filex --mode 0755 /data
     checkpath --directory --owner filex:filex --mode 0755 /etc/filex
+    checkpath --file --owner filex:filex --mode 0640 /var/log/${RC_SVCNAME}.log
 }
