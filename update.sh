@@ -1,5 +1,5 @@
-sudo rc-service filex.openrc stop
+sudo rc-service filex stop
 git pull
 make build
 sudo  make install
-sudo rc-service filex.openrc start
+sudo rc-service filex start
