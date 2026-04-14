@@ -10,6 +10,7 @@ const state = {
   entries: [],
   moveSrc: null,
   editorPath: null,
+  favourites: [],
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -23,6 +24,8 @@ const ICONS = {
   code:  `<svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00bcd4" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
   text:  `<svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#9e9e9e" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
   file:  `<svg class="file-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#757575" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`,
+  starFilled: `<svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
+  starEmpty:  `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>`,
 };
 
 function getIcon(entry) {
@@ -262,6 +265,17 @@ function renderFileList() {
         'Move',
         () => openMoveModal(entry.path)
       ));
+    }
+
+    if (entry.is_dir) {
+      const isFav = isFavourite(entry.path);
+      const starBtn = makeIconBtn(
+        isFav ? ICONS.starFilled : ICONS.starEmpty,
+        isFav ? 'Remove from Favourites' : 'Add to Favourites',
+        () => toggleFavourite(entry.path, entry.name, starBtn)
+      );
+      if (isFav) starBtn.classList.add('fav-active');
+      actions.appendChild(starBtn);
     }
 
     actions.appendChild(makeIconBtn(
@@ -565,13 +579,15 @@ async function openPreview(entry) {
 // ─── Disk info ────────────────────────────────────────────────────────────────
 async function loadDiskInfo() {
   try {
-    const data = await apiGet('/api/info?path=/');
+    const params = new URLSearchParams({ path: state.currentPath });
+    const data = await apiGet('/api/info?' + params);
     const disk = data.disk;
     if (!disk) return;
     const pct = Math.round(disk.used_pct);
     document.getElementById('disk-pct').textContent = pct + '%';
     document.getElementById('disk-used').textContent = formatSize(disk.used);
     document.getElementById('disk-total').textContent = formatSize(disk.total);
+    document.getElementById('disk-free').textContent = formatSize(disk.free);
     const fill = document.getElementById('disk-bar-fill');
     fill.style.width = pct + '%';
     fill.className = 'disk-bar-fill' + (pct >= 90 ? ' danger' : pct >= 75 ? ' warn' : '');
@@ -582,13 +598,40 @@ async function loadDiskInfo() {
 async function loadFavourites() {
   try {
     const favs = await apiGet('/api/favourites');
+    state.favourites = favs || [];
     const list = document.getElementById('fav-list');
     list.innerHTML = '';
-    (favs || []).forEach(fav => {
+    state.favourites.forEach(fav => {
       const el = document.createElement('div');
       el.className = 'fav-item';
       el.dataset.path = fav.path;
-      el.innerHTML = `${ICONS.dir}<span>${fav.name}</span>`;
+
+      // Icon + name (navigable area)
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'fav-name';
+      nameSpan.innerHTML = ICONS.dir; // safe: ICONS.dir is a static constant
+      const nameText = document.createElement('span');
+      nameText.textContent = fav.name;
+      nameSpan.appendChild(nameText);
+
+      // Remove button (hidden until hover)
+      const removeBtn = document.createElement('button');
+      removeBtn.className = 'fav-remove-btn';
+      removeBtn.title = 'Remove from Favourites';
+      removeBtn.textContent = '✕';
+      removeBtn.onclick = async (e) => {
+        e.stopPropagation();
+        try {
+          await apiPost('/api/favourites/remove', { path: fav.path });
+          await loadFavourites();
+          renderFileList();
+        } catch (err) {
+          toast(err.message, 'error');
+        }
+      };
+
+      el.appendChild(nameSpan);
+      el.appendChild(removeBtn);
       el.onclick = () => loadDirectory(fav.path);
       list.appendChild(el);
     });
@@ -596,13 +639,35 @@ async function loadFavourites() {
   } catch (_) { /* non-critical */ }
 }
 
+function isFavourite(path) {
+  return state.favourites.some(f => f.path === path);
+}
+
+async function toggleFavourite(path, name, btn) {
+  try {
+    if (isFavourite(path)) {
+      await apiPost('/api/favourites/remove', { path });
+    } else {
+      await apiPost('/api/favourites/add', { path, name });
+    }
+    await loadFavourites();
+    // Update just this button to reflect the new state
+    if (btn) {
+      const isNowFav = isFavourite(path);
+      btn.innerHTML = isNowFav ? ICONS.starFilled : ICONS.starEmpty;
+      btn.classList.toggle('fav-active', isNowFav);
+      btn.title = isNowFav ? 'Remove from Favourites' : 'Add to Favourites';
+    }
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
 function updateActiveFav() {
   document.querySelectorAll('.fav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.path === state.currentPath);
   });
 }
-
-// ─── Modal helpers ────────────────────────────────────────────────────────────
 function openModal(id) {
   const el = document.getElementById(id);
   if (el) { el.classList.add('open'); }
@@ -640,6 +705,31 @@ function initDragDrop() {
   });
 }
 
+// ─── Font size ────────────────────────────────────────────────────────────────
+const FONT_SIZE_KEY = 'filex_font_size';
+const FONT_SIZE_MIN = 11;
+const FONT_SIZE_MAX = 20;
+const FONT_SIZE_DEFAULT = 14;
+
+function loadFontSize() {
+  const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10);
+  const size = (saved >= FONT_SIZE_MIN && saved <= FONT_SIZE_MAX) ? saved : FONT_SIZE_DEFAULT;
+  applyFontSize(size);
+}
+
+function applyFontSize(size) {
+  document.documentElement.style.setProperty('--font-size-base', size + 'px');
+  const label = document.getElementById('font-size-label');
+  if (label) label.textContent = size + 'px';
+  localStorage.setItem(FONT_SIZE_KEY, size);
+}
+
+function changeFontSize(delta) {
+  const current = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--font-size-base'), 10) || FONT_SIZE_DEFAULT;
+  const next = Math.min(FONT_SIZE_MAX, Math.max(FONT_SIZE_MIN, current + delta));
+  applyFontSize(next);
+}
+
 // ─── Keyboard shortcuts ───────────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
   // Ignore if inside input/textarea
@@ -656,6 +746,9 @@ document.addEventListener('keydown', e => {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
+  // Apply saved font size immediately
+  loadFontSize();
+
   // Read initial path from URL
   const url = new URL(window.location);
   const initPath = url.searchParams.get('path') || '/';
@@ -731,6 +824,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-refresh').addEventListener('click', () => {
     loadDirectory(state.currentPath);
   });
+
+  // Font size controls
+  document.getElementById('btn-font-dec').addEventListener('click', () => changeFontSize(-1));
+  document.getElementById('btn-font-inc').addEventListener('click', () => changeFontSize(+1));
 
   // Select-all checkbox
   document.getElementById('select-all').addEventListener('change', e => {

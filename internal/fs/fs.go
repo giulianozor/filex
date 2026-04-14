@@ -279,8 +279,22 @@ func (f *FS) SaveUpload(dirPath, filename string, src io.Reader) error {
 
 // DiskUsage returns disk usage statistics for the base path.
 func (f *FS) DiskUsage() (*DiskUsage, error) {
+return f.diskUsageFor(f.basePath)
+}
+
+// DiskUsageAt returns disk usage statistics for the filesystem containing
+// the given path (which must be within the base jail).
+func (f *FS) DiskUsageAt(path string) (*DiskUsage, error) {
+abs, err := f.resolve(path)
+if err != nil {
+return nil, err
+}
+return f.diskUsageFor(abs)
+}
+
+func (f *FS) diskUsageFor(abs string) (*DiskUsage, error) {
 var stat syscall.Statfs_t
-if err := syscall.Statfs(f.basePath, &stat); err != nil {
+if err := syscall.Statfs(abs, &stat); err != nil {
 return nil, err
 }
 total := stat.Blocks * uint64(stat.Bsize)
