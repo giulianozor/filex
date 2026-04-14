@@ -32,7 +32,7 @@ func setupHandler(t *testing.T) (*Handler, string) {
 			{Name: "Home", Path: "/"},
 		},
 	}
-	h := New(fsys, cfg, http.Dir(dir))
+	h := New(fsys, cfg, http.Dir(dir), nil, nil)
 	return h, dir
 }
 

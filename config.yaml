@@ -1,11 +1,21 @@
 host: "0.0.0.0"
 port: 8080
-base_path: "/data"
 show_dotfiles: false
-favourites:
-  - name: "Home"
-    path: "/"
-  - name: "Documents"
-    path: "/documents"
-  - name: "Downloads"
-    path: "/downloads"
+
+# Global base_path is used when no users are defined (no-auth mode).
+# base_path: "/data"
+
+# Users — when defined, login is required.
+# Generate password hashes with: htpasswd -bnBC 10 "" mypassword | cut -d: -f2
+users:
+  - username: "admin"
+    # Password: "changeme" — replace with a real bcrypt hash!
+    password_hash: "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+    base_path: "/data"
+    uid: 1000
+    gid: 1000
+    favourites:
+      - name: "Home"
+        path: "/"
+      - name: "Documents"
+        path: "/documents"

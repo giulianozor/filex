@@ -68,6 +68,7 @@ function toast(msg, type = 'info') {
 // ─── API helpers ──────────────────────────────────────────────────────────────
 async function apiGet(url) {
   const r = await fetch(url);
+  if (r.status === 401) { window.location.href = '/login'; return null; }
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
@@ -79,6 +80,7 @@ async function apiPost(url, body) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+  if (r.status === 401) { window.location.href = '/login'; return null; }
   const data = await r.json();
   if (!r.ok) throw new Error(data.error || r.statusText);
   return data;
@@ -658,6 +660,21 @@ document.addEventListener('DOMContentLoaded', () => {
   const url = new URL(window.location);
   const initPath = url.searchParams.get('path') || '/';
 
+  // Check auth and get current user
+  fetch('/api/me').then(r => {
+    if (r.status === 401) { window.location.href = '/login'; return null; }
+    return r.json();
+  }).then(me => {
+    if (!me) return;
+    if (me.auth_required && me.username) {
+      const info = document.getElementById('user-info');
+      if (info) {
+        info.style.display = 'flex';
+        document.getElementById('username-display').textContent = me.username;
+      }
+    }
+  }).catch(() => {});
+
   // Load config to get show_dotfiles default
   fetch('/api/config').then(r => r.json()).then(cfg => {
     if (cfg && typeof cfg.show_dotfiles === 'boolean') {
@@ -673,6 +690,15 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-upload').addEventListener('click', () => {
     document.getElementById('file-input').click();
   });
+
+  // Logout button
+  const btnLogout = document.getElementById('btn-logout');
+  if (btnLogout) {
+    btnLogout.addEventListener('click', async () => {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    });
+  }
   document.getElementById('file-input').addEventListener('change', e => {
     uploadFiles(Array.from(e.target.files));
     e.target.value = '';
