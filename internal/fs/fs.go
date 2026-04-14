@@ -86,6 +86,13 @@ if f.uid < 0 && f.gid < 0 {
 return fn()
 }
 
+// Credential switching requires root (CAP_SETUID / CAP_SETGID).
+// When the process is not root, skip the switch and execute fn directly;
+// uid/gid are still honoured by chown() for newly created files.
+if syscall.Geteuid() != 0 {
+return fn()
+}
+
 runtime.LockOSThread()
 
 origEUID := syscall.Geteuid()
