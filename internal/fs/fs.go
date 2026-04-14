@@ -1,6 +1,7 @@
 package fs
 
 import (
+"archive/zip"
 "errors"
 "fmt"
 "io"
@@ -310,6 +311,123 @@ Free:    free,
 Used:    used,
 UsedPct: usedPct,
 }, nil
+}
+
+// Copy recursively copies src to dst within the base jail.
+// If dst is an existing directory, src is placed inside it.
+func (f *FS) Copy(src, dst string) error {
+	absSrc, err := f.resolve(src)
+	if err != nil {
+		return err
+	}
+	absDst, err := f.resolve(dst)
+	if err != nil {
+		return err
+	}
+	// If dst is an existing directory, copy src inside it.
+	if info, err2 := os.Stat(absDst); err2 == nil && info.IsDir() {
+		candidate := filepath.Join(absDst, filepath.Base(absSrc))
+		absDst, err = f.validateAbs(candidate)
+		if err != nil {
+			return err
+		}
+	}
+	return f.copyAll(absSrc, absDst)
+}
+
+func (f *FS) copyAll(src, dst string) error {
+	info, err := os.Stat(src)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		if err := os.MkdirAll(dst, info.Mode()); err != nil {
+			return err
+		}
+		entries, err := os.ReadDir(src)
+		if err != nil {
+			return err
+		}
+		for _, e := range entries {
+			if err := f.copyAll(filepath.Join(src, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+				return err
+			}
+		}
+		f.chown(dst)
+		return nil
+	}
+	return f.copyFile(src, dst, info.Mode())
+}
+
+func (f *FS) copyFile(src, dst string, mode os.FileMode) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, mode)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	if err := out.Close(); err != nil {
+		return err
+	}
+	f.chown(dst)
+	return nil
+}
+
+// ZipPaths streams a zip archive containing all specified paths to dst.
+// Each path may be a file or a directory (archived recursively).
+// The zip entries are named relative to the parent directory of each path.
+func (f *FS) ZipPaths(dst io.Writer, paths []string) error {
+	zw := zip.NewWriter(dst)
+	for _, path := range paths {
+		abs, err := f.resolve(path)
+		if err != nil {
+			zw.Close()
+			return err
+		}
+		if err := zipAdd(zw, abs, filepath.Dir(abs)); err != nil {
+			zw.Close()
+			return err
+		}
+	}
+	return zw.Close()
+}
+
+// zipAdd recursively adds abs (relative to base) into zw.
+func zipAdd(zw *zip.Writer, abs, base string) error {
+	return filepath.Walk(abs, func(filePath string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(base, filePath)
+		if err != nil {
+			return err
+		}
+		zipPath := filepath.ToSlash(relPath)
+		if info.IsDir() {
+			if zipPath != "." {
+				_, err = zw.Create(zipPath + "/")
+			}
+			return err
+		}
+		w, err := zw.Create(zipPath)
+		if err != nil {
+			return err
+		}
+		file, err := os.Open(filePath)
+		if err != nil {
+			return err
+		}
+		defer file.Close()
+		_, err = io.Copy(w, file)
+		return err
+	})
 }
 
 // mimeHint returns a short string categorising the file type.

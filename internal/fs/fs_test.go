@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -193,6 +194,69 @@ func TestFileInfo(t *testing.T) {
 	}
 	if entry.Size != 4 {
 		t.Errorf("Size = %d, want 4", entry.Size)
+	}
+}
+
+func TestCopy_File(t *testing.T) {
+	fsys, dir := setup(t)
+	os.WriteFile(filepath.Join(dir, "src.txt"), []byte("hello"), 0o644)
+
+	if err := fsys.Copy("/src.txt", "/dst.txt"); err != nil {
+		t.Fatalf("Copy: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "dst.txt"))
+	if err != nil {
+		t.Fatalf("dst.txt not found: %v", err)
+	}
+	if string(data) != "hello" {
+		t.Errorf("content = %q, want %q", string(data), "hello")
+	}
+	// src must still exist
+	if _, err := os.Stat(filepath.Join(dir, "src.txt")); err != nil {
+		t.Error("src.txt should still exist after copy")
+	}
+}
+
+func TestCopy_DirIntoExisting(t *testing.T) {
+	fsys, dir := setup(t)
+	os.Mkdir(filepath.Join(dir, "src"), 0o755)
+	os.WriteFile(filepath.Join(dir, "src", "a.txt"), []byte("a"), 0o644)
+	os.Mkdir(filepath.Join(dir, "dest"), 0o755)
+
+	if err := fsys.Copy("/src", "/dest"); err != nil {
+		t.Fatalf("Copy dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "dest", "src", "a.txt")); err != nil {
+		t.Errorf("dest/src/a.txt not found: %v", err)
+	}
+}
+
+func TestZipPaths_File(t *testing.T) {
+	fsys, dir := setup(t)
+	os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("world"), 0o644)
+
+	if err := fsys.ZipPaths(io.Discard, []string{"/hello.txt"}); err != nil {
+		t.Fatalf("ZipPaths: %v", err)
+	}
+}
+
+func TestZipPaths_Dir(t *testing.T) {
+	fsys, dir := setup(t)
+	os.Mkdir(filepath.Join(dir, "mydir"), 0o755)
+	os.WriteFile(filepath.Join(dir, "mydir", "f.txt"), []byte("data"), 0o644)
+
+	if err := fsys.ZipPaths(io.Discard, []string{"/mydir"}); err != nil {
+		t.Fatalf("ZipPaths dir: %v", err)
+	}
+}
+
+func TestZipPaths_Multiple(t *testing.T) {
+	fsys, dir := setup(t)
+	os.WriteFile(filepath.Join(dir, "a.txt"), []byte("a"), 0o644)
+	os.WriteFile(filepath.Join(dir, "b.txt"), []byte("b"), 0o644)
+
+	if err := fsys.ZipPaths(io.Discard, []string{"/a.txt", "/b.txt"}); err != nil {
+		t.Fatalf("ZipPaths multiple: %v", err)
 	}
 }
 

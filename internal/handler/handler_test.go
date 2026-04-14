@@ -194,6 +194,67 @@ func TestHandleInfo(t *testing.T) {
 	}
 }
 
+func TestHandleCopy(t *testing.T) {
+	h, dir := setupHandler(t)
+	os.WriteFile(filepath.Join(dir, "orig.txt"), []byte("x"), 0o644)
+
+	body := `{"src":"/orig.txt","dst":"/copy.txt"}`
+	rr := doRequest(t, h, http.MethodPost, "/api/copy", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "copy.txt")); err != nil {
+		t.Errorf("copy.txt not found: %v", err)
+	}
+	// original must still exist
+	if _, err := os.Stat(filepath.Join(dir, "orig.txt")); err != nil {
+		t.Error("orig.txt should still exist after copy")
+	}
+}
+
+func TestHandleZipDownload_Single(t *testing.T) {
+	h, dir := setupHandler(t)
+	os.WriteFile(filepath.Join(dir, "dl.txt"), []byte("zip me"), 0o644)
+
+	body := `{"paths":["/dl.txt"]}`
+	rr := doRequest(t, h, http.MethodPost, "/api/zip-download", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	ct := rr.Header().Get("Content-Type")
+	if ct != "application/zip" {
+		t.Errorf("Content-Type = %q, want application/zip", ct)
+	}
+}
+
+func TestHandleZipDownload_Multiple(t *testing.T) {
+	h, dir := setupHandler(t)
+	os.WriteFile(filepath.Join(dir, "x.txt"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, "y.txt"), []byte("y"), 0o644)
+
+	body := `{"paths":["/x.txt","/y.txt"]}`
+	rr := doRequest(t, h, http.MethodPost, "/api/zip-download", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestHandleZipDownload_Dir(t *testing.T) {
+	h, dir := setupHandler(t)
+	os.Mkdir(filepath.Join(dir, "mydir"), 0o755)
+	os.WriteFile(filepath.Join(dir, "mydir", "inside.txt"), []byte("hi"), 0o644)
+
+	body := `{"paths":["/mydir"]}`
+	rr := doRequest(t, h, http.MethodPost, "/api/zip-download", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	cd := rr.Header().Get("Content-Disposition")
+	if !strings.Contains(cd, "mydir.zip") {
+		t.Errorf("Content-Disposition = %q, expected mydir.zip", cd)
+	}
+}
+
 func TestHandleConfig(t *testing.T) {
 	h, _ := setupHandler(t)
 	rr := doRequest(t, h, http.MethodGet, "/api/config", nil)
