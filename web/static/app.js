@@ -672,10 +672,18 @@ async function openPreview(entry) {
   const container = document.getElementById('preview-container');
   const title = document.getElementById('preview-title');
   const dlBtn = document.getElementById('preview-download');
+  const moveBtn = document.getElementById('preview-move');
+  const copyBtn = document.getElementById('preview-copy');
+  const deleteBtn = document.getElementById('preview-delete');
 
   title.textContent = entry.name;
   dlBtn.href = '/api/download?path=' + encodeURIComponent(entry.path);
   dlBtn.download = entry.name;
+
+  moveBtn.onclick = () => { closeModal('modal-preview'); openMoveModal(entry.path); };
+  copyBtn.onclick = () => { closeModal('modal-preview'); openCopyModal(entry.path); };
+  deleteBtn.onclick = () => { closeModal('modal-preview'); deleteFiles([entry.path]); };
+
   container.innerHTML = '';
 
   const hint = entry.mime_hint;
