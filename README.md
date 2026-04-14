@@ -1,4 +1,4 @@
-# # filex
+# filex
 
 A fast, self-hosted web-based file browser with a dark theme, built in Go.
 
