@@ -93,7 +93,7 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
   }
 
   btn.disabled = true;
-  btn.textContent = 'Signing in\u2026';
+  btn.textContent = 'Signing in…';
   errorEl.style.display = 'none';
 
   try {
@@ -108,9 +108,11 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
       errorEl.style.display = 'block';
       return;
     }
-    // Redirect to main app (or back to original page)
+    // Redirect to main app, only allow relative paths to prevent open redirect
     const params = new URLSearchParams(window.location.search);
-    window.location.href = params.get('next') || '/';
+    const next = params.get('next') || '/';
+    const safeNext = next.startsWith('/') && !next.startsWith('//') ? next : '/';
+    window.location.href = safeNext;
   } catch (err) {
     errorEl.textContent = 'Network error. Please try again.';
     errorEl.style.display = 'block';

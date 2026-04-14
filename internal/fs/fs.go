@@ -257,26 +257,28 @@ return os.Open(abs)
 
 // SaveUpload writes the uploaded content to path/filename.
 func (f *FS) SaveUpload(dirPath, filename string, src io.Reader) error {
-absDir, err := f.resolve(dirPath)
-if err != nil {
-return err
-}
-destPath := filepath.Join(absDir, filepath.Base(filename))
-validDest, err := f.validateAbs(destPath)
-if err != nil {
-return err
-}
-dst, err := os.Create(validDest)
-if err != nil {
-return err
-}
-defer dst.Close()
-if _, err = io.Copy(dst, src); err != nil {
-return err
-}
-dst.Close()
-f.chown(validDest)
-return nil
+	absDir, err := f.resolve(dirPath)
+	if err != nil {
+		return err
+	}
+	destPath := filepath.Join(absDir, filepath.Base(filename))
+	validDest, err := f.validateAbs(destPath)
+	if err != nil {
+		return err
+	}
+	dst, err := os.Create(validDest)
+	if err != nil {
+		return err
+	}
+	if _, err = io.Copy(dst, src); err != nil {
+		dst.Close()
+		return err
+	}
+	if err = dst.Close(); err != nil {
+		return err
+	}
+	f.chown(validDest)
+	return nil
 }
 
 // DiskUsage returns disk usage statistics for the base path.
