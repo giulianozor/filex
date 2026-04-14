@@ -18,6 +18,7 @@ test:
 
 install: build
 	install -Dm755 bin/$(BINARY) $(INSTALL_DIR)/$(BINARY)
+	install -Dm755 bin/$(PASSWD_BINARY) $(INSTALL_DIR)/$(PASSWD_BINARY)
 
 install-openrc:
 	install -Dm755 init/filex.openrc /etc/init.d/filex
