@@ -12,7 +12,9 @@ A fast, self-hosted web-based file browser with a dark theme, built in Go.
 - 📂 Create folders, rename, delete (single or bulk), move files
 - ⭐ Configurable favourite folders (sidebar bookmarks)
 - 👁️ Toggle hidden (dot) files
-- 🔒 Path jail — cannot escape the configured base directory
+- 🔒 Path jail — each user is confined to their own base directory
+- 🔐 Per-user login — users configured in `config.yaml` with bcrypt passwords
+- 👤 Per-user UID/GID — uploaded/created files are chowned to the user's uid/gid
 - 🌑 Dark, high-contrast UI with mobile-responsive layout
 - 📦 Single binary with embedded assets (no external dependencies at runtime)
 
@@ -22,14 +24,16 @@ A fast, self-hosted web-based file browser with a dark theme, built in Go.
 # Build
 make build
 
-# Run (serves current directory on :8080)
+# Run (serves current directory on :8080, no auth)
 ./bin/filex
 
-# Run with a config file
+# Run with a config file (auth enabled when users: is defined)
 ./bin/filex -config config.yaml
 ```
 
 ## Configuration (`config.yaml`)
+
+### No-auth mode (single user, no login required)
 
 ```yaml
 host: "0.0.0.0"
@@ -39,8 +43,40 @@ show_dotfiles: false
 favourites:
   - name: "Home"
     path: "/"
-  - name: "Documents"
-    path: "/documents"
+```
+
+### Multi-user mode (login required)
+
+When `users:` is defined, a login page is shown and each user gets their own
+path jail, favourites, and optional UID/GID for file ownership.
+
+```yaml
+host: "0.0.0.0"
+port: 8080
+show_dotfiles: false
+
+users:
+  - username: "alice"
+    password_hash: "$2a$10$..."   # bcrypt hash — see below
+    base_path: "/data/alice"
+    uid: 1001                     # omit to skip chown
+    gid: 1001
+    favourites:
+      - name: "Home"
+        path: "/"
+  - username: "bob"
+    password_hash: "$2a$10$..."
+    base_path: "/data/bob"
+```
+
+### Generating password hashes
+
+```bash
+# Using htpasswd (apache2-utils / httpd-tools)
+htpasswd -bnBC 10 "" mypassword | tr -d ':\n'
+
+# Using Python
+python3 -c "import bcrypt; print(bcrypt.hashpw(b'mypassword', bcrypt.gensalt(10)).decode())"
 ```
 
 ## Docker

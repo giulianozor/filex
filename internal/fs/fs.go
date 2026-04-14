@@ -59,18 +59,14 @@ return &FS{basePath: abs, uid: uid, gid: gid}, nil
 
 func (f *FS) BasePath() string { return f.basePath }
 
-// chown sets ownership of path if uid/gid are set (>= 0).
+// chown sets ownership of path for fields that have been set (>= 0).
+// A value of -1 means "do not change this field" (passed directly to os.Lchown).
 func (f *FS) chown(path string) {
-if f.uid >= 0 || f.gid >= 0 {
-uid, gid := f.uid, f.gid
-if uid < 0 {
-uid = -1
+// Only call Lchown when at least one of uid/gid is specified.
+if f.uid < 0 && f.gid < 0 {
+return
 }
-if gid < 0 {
-gid = -1
-}
-_ = os.Lchown(path, uid, gid)
-}
+_ = os.Lchown(path, f.uid, f.gid)
 }
 
 // resolve treats path as relative to basePath ("/" means the base root).

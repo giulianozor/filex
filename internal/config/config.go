@@ -8,19 +8,20 @@ import (
 )
 
 type Favourite struct {
-	Name string `yaml:"name"`
-	Path string `yaml:"path"`
+	Name string `yaml:"name" json:"name"`
+	Path string `yaml:"path" json:"path"`
 }
 
 // User defines a per-user configuration. Each user gets their own base_path
 // jail. UID/GID are used to chown files created/uploaded by this user.
-// A UID or GID of -1 means "do not chown".
+// A nil UID or GID means "do not chown" (ownership is not changed).
+// Use uid: 0 / gid: 0 to explicitly chown to root.
 type User struct {
 	Username     string      `yaml:"username"`
 	PasswordHash string      `yaml:"password_hash"` // bcrypt hash
 	BasePath     string      `yaml:"base_path"`
-	UID          int         `yaml:"uid"`
-	GID          int         `yaml:"gid"`
+	UID          *int        `yaml:"uid,omitempty"`
+	GID          *int        `yaml:"gid,omitempty"`
 	ShowDotfiles *bool       `yaml:"show_dotfiles,omitempty"` // nil = use global default
 	Favourites   []Favourite `yaml:"favourites,omitempty"`
 }
@@ -76,11 +77,6 @@ func Load(path string) (*Config, error) {
 			return nil, err
 		}
 		u.BasePath = uAbs
-		// Default UID/GID to -1 (no chown) if zero value used in config.
-		if u.UID == 0 && u.GID == 0 {
-			u.UID = -1
-			u.GID = -1
-		}
 	}
 
 	return cfg, nil

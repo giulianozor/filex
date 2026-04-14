@@ -80,6 +80,11 @@ h.mux.HandleFunc("/api/info", h.authMiddleware(h.handleInfo))
 h.mux.HandleFunc("/api/favourites", h.authMiddleware(h.handleFavourites))
 h.mux.HandleFunc("/api/config", h.authMiddleware(h.handleConfig))
 
+// /login is always public — serves login.html.
+h.mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
+serveLogin(w, r, staticFS)
+})
+
 fileServer := http.FileServer(staticFS)
 h.mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 // Static assets are always public.
@@ -182,6 +187,22 @@ if u != nil && u.ShowDotfiles != nil {
 return *u.ShowDotfiles
 }
 return h.cfg.ShowDotfiles
+}
+
+func serveLogin(w http.ResponseWriter, r *http.Request, staticFS http.FileSystem) {
+f, err := staticFS.Open("/login.html")
+if err != nil {
+http.Error(w, "login.html not found", http.StatusInternalServerError)
+return
+}
+defer f.Close()
+stat, err := f.Stat()
+if err != nil {
+http.Error(w, "stat error", http.StatusInternalServerError)
+return
+}
+w.Header().Set("Content-Type", "text/html; charset=utf-8")
+http.ServeContent(w, r, "login.html", stat.ModTime(), f.(io.ReadSeeker))
 }
 
 func serveIndex(w http.ResponseWriter, r *http.Request, fs http.FileSystem) {

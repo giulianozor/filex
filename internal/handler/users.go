@@ -16,7 +16,8 @@ func BuildUserFS(cfg *config.Config) map[string]*userEntry {
 	m := make(map[string]*userEntry, len(cfg.Users))
 	for i := range cfg.Users {
 		u := &cfg.Users[i]
-		fs, err := fslib.NewWithOwner(u.BasePath, u.UID, u.GID)
+		uid, gid := derefID(u.UID), derefID(u.GID)
+		fs, err := fslib.NewWithOwner(u.BasePath, uid, gid)
 		if err != nil {
 			log.Printf("WARNING: skipping user %q: %v", u.Username, err)
 			continue
@@ -24,4 +25,13 @@ func BuildUserFS(cfg *config.Config) map[string]*userEntry {
 		m[u.Username] = &userEntry{user: u, fs: fs}
 	}
 	return m
+}
+
+// derefID returns the pointed-to int value, or -1 if the pointer is nil.
+// -1 is the sentinel value used by fs.FS to mean "do not chown".
+func derefID(p *int) int {
+	if p == nil {
+		return -1
+	}
+	return *p
 }
