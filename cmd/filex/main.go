@@ -17,6 +17,27 @@ fslib "github.com/giulianozor/filex/internal/fs"
 // Version is set at build time via -ldflags.
 var Version = "dev"
 
+// checkPrivileges warns if per-user UID/GID switching is configured but the
+// process is not running as root.  setreuid/setregid require root (or
+// CAP_SETUID/CAP_SETGID) and will fail with EPERM otherwise, which results in
+// users seeing a "setegid: operation not permitted" error after login.
+func checkPrivileges(cfg *config.Config) {
+	if os.Geteuid() == 0 {
+		return
+	}
+	var affected []string
+	for _, u := range cfg.Users {
+		if u.UID != nil || u.GID != nil {
+			affected = append(affected, u.Username)
+		}
+	}
+	if len(affected) > 0 {
+		log.Printf("WARNING: users %v have uid/gid configured but filex is not running as root (euid=%d). "+
+			"Per-user credential switching (setreuid/setregid) will fail with EPERM. "+
+			"Start filex as root when per-user uid/gid is configured.", affected, os.Geteuid())
+	}
+}
+
 func main() {
 configPath := flag.String("config", "", "path to config.yaml (optional)")
 showVersion := flag.Bool("version", false, "print version and exit")
@@ -31,6 +52,8 @@ cfg, err := config.Load(*configPath)
 if err != nil {
 log.Fatalf("Failed to load config: %v", err)
 }
+
+checkPrivileges(cfg)
 
 // Build global FS (used when auth is disabled).
 globalFS, err := fslib.New(cfg.BasePath)

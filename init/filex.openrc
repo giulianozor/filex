@@ -3,7 +3,10 @@
 description="filex — web-based file browser"
 command="/usr/local/bin/filex"
 command_args="-config /etc/filex/config.yaml"
-command_user="filex:filex"
+# filex must run as root when per-user uid/gid switching is configured in
+# config.yaml (the server uses setreuid/setregid to enforce per-user file
+# permissions).  Remove the command_user line or set it to root if your
+# config does NOT use per-user uid/gid and you prefer a non-root daemon.
 command_background=true
 pidfile="/run/${RC_SVCNAME}.pid"
 output_log="/var/log/filex/${RC_SVCNAME}.log"
@@ -15,7 +18,6 @@ depend() {
 }
 
 start_pre() {
-    checkpath --directory --owner filex:filex --mode 0755 /data
-    checkpath --directory --owner filex:filex --mode 0755 /etc/filex
-    checkpath --directory --owner filex:filex --mode 0755 /var/log/filex
+    checkpath --directory --mode 0755 /etc/filex
+    checkpath --directory --mode 0755 /var/log/filex
 }
