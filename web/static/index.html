@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>filex — file browser</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<div id="upload-progress-bar"></div>
+<div id="drop-overlay">⬆ Drop files to upload</div>
+<div id="toast-container"></div>
+<div id="sidebar-overlay"></div>
+
+<div id="app">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M3 3h7l2 3h9a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+      </svg>
+      filex
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label">Favourites</div>
+      <div id="fav-list"></div>
+    </div>
+
+    <div class="disk-info" id="disk-info">
+      <div class="disk-label">
+        <span>Disk Usage</span>
+        <span id="disk-pct">—</span>
+      </div>
+      <div class="disk-bar"><div class="disk-bar-fill" id="disk-bar-fill" style="width:0%"></div></div>
+      <div style="margin-top:5px;display:flex;justify-content:space-between;">
+        <span id="disk-used">—</span>
+        <span id="disk-total">—</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Topbar -->
+    <div id="topbar">
+      <button id="menu-toggle" title="Toggle sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div id="breadcrumb"></div>
+      <div id="user-info" style="display:none">
+        <span class="username" id="username-display"></span>
+        <button class="btn" id="btn-logout">Logout</button>
+      </div>
+      <div id="toolbar">
+        <button class="btn" id="btn-upload" title="Upload files">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+          Upload
+        </button>
+        <input type="file" id="file-input" multiple style="display:none">
+        <button class="btn" id="btn-mkdir" title="New folder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+          </svg>
+          New Folder
+        </button>
+        <button class="btn" id="btn-dotfiles" title="Toggle hidden files">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M20.188 10.934a9 9 0 0 1 0 2.132 9 9 0 0 1-16.376 0 9 9 0 0 1 0-2.132 9 9 0 0 1 16.376 0z"/>
+          </svg>
+          Dotfiles
+        </button>
+        <button class="btn danger" id="btn-delete-sel" title="Delete selected" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+          Delete Selected
+        </button>
+        <button class="btn" id="btn-refresh" title="Refresh (F5)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- File area -->
+    <div id="file-area">
+      <table class="file-table" id="file-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="select-all" class="row-check"></th>
+            <th data-sort="name">Name <span class="sort-arrow" id="sort-name"></span></th>
+            <th data-sort="size">Size <span class="sort-arrow" id="sort-size"></span></th>
+            <th data-sort="date">Modified <span class="sort-arrow" id="sort-date"></span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="file-body"></tbody>
+      </table>
+      <div class="empty-state" id="empty-state" style="display:none">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+          <path d="M3 3h7l2 3h9a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+        </svg>
+        <p>This folder is empty</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Mkdir modal -->
+<div class="modal-backdrop" id="modal-mkdir">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">New Folder</span>
+      <button class="modal-close" data-close="modal-mkdir">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Folder name</label>
+        <input type="text" class="form-input" id="mkdir-name" placeholder="my-folder" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-mkdir">Cancel</button>
+      <button class="btn primary" id="mkdir-confirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move modal -->
+<div class="modal-backdrop" id="modal-move">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Move File</span>
+      <button class="modal-close" data-close="modal-move">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Destination path</label>
+        <input type="text" class="form-input" id="move-dst" placeholder="/destination/folder" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-move">Cancel</button>
+      <button class="btn primary" id="move-confirm">Move</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editor modal -->
+<div class="modal-backdrop" id="modal-editor">
+  <div class="modal fullscreen wide">
+    <div class="modal-header">
+      <span class="modal-title" id="editor-title">Editor</span>
+      <button class="modal-close" data-close="modal-editor">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="editor-textarea" spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-editor">Cancel</button>
+      <button class="btn primary" id="editor-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preview modal -->
+<div class="modal-backdrop" id="modal-preview">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span class="modal-title" id="preview-title">Preview</span>
+      <button class="modal-close" data-close="modal-preview">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="preview-container" id="preview-container"></div>
+    </div>
+    <div class="modal-footer">
+      <a class="btn primary" id="preview-download" href="#" download>Download</a>
+      <button class="btn" data-close="modal-preview">Close</button>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

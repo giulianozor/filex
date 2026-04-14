@@ -1,0 +1,20 @@
+#!/sbin/openrc-run
+
+description="filex — web-based file browser"
+command="/usr/local/bin/filex"
+command_args="-config /etc/filex/config.yaml"
+command_user="filex:filex"
+command_background=true
+pidfile="/run/${RC_SVCNAME}.pid"
+output_log="/var/log/${RC_SVCNAME}.log"
+error_log="/var/log/${RC_SVCNAME}.log"
+
+depend() {
+    need net
+    after firewall
+}
+
+start_pre() {
+    checkpath --directory --owner filex:filex --mode 0755 /data
+    checkpath --directory --owner filex:filex --mode 0755 /etc/filex
+}

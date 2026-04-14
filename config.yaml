@@ -1,0 +1,23 @@
+host: "0.0.0.0"
+port: 8080
+show_dotfiles: false
+
+# Global base_path is used when no users are defined (no-auth mode).
+# base_path: "/data"
+
+# Users — when defined, login is required.
+# Generate a password hash with: htpasswd -bnBC 10 "" mypassword | tr -d ':\n'
+# Or: go run -mod=mod github.com/giulianozor/filex/cmd/filex -hash mypassword
+users:
+  - username: "admin"
+    # Password: "changeme" — replace with a real bcrypt hash in production!
+    password_hash: "$2a$10$61R6xwSk2XfJE/DSN4kdNOlc6UoXqgib0JCDeYiKF6k.5f7aYB.fu"
+    base_path: "/data"
+    # uid and gid: omit (or comment out) to skip chown; set to 0 for root, or any valid UID/GID.
+    # uid: 1000
+    # gid: 1000
+    favourites:
+      - name: "Home"
+        path: "/"
+      - name: "Documents"
+        path: "/documents"
