@@ -33,10 +33,11 @@ favMu       sync.RWMutex
 runtimeFavs map[string][]config.Favourite // key: username or "" for global
 cfgMu      sync.Mutex // protects cfg.Favourites / cfg.Users[i].Favourites during save
 configPath string     // path to the loaded config.yaml; empty = no persistence
+version    string     // application version string set at build time
 }
 
 // New creates a Handler. If cfg.AuthRequired(), users must contain one FS per user.
-func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry, configPath string) *Handler {
+func New(globalFS *fslib.FS, cfg *config.Config, staticFS http.FileSystem, authStore *authlib.Store, users map[string]*userEntry, configPath string, version string) *Handler {
 // Initialize runtime favourites from config, preserving the existing
 // fallback: per-user favs take priority; users without their own fall back
 // to the global list.
@@ -64,6 +65,7 @@ authStore:   authStore,
 mux:         http.NewServeMux(),
 runtimeFavs: runtimeFavs,
 configPath:  configPath,
+version:     version,
 }
 h.registerRoutes(staticFS)
 return h
@@ -90,6 +92,7 @@ func (h *Handler) registerRoutes(staticFS http.FileSystem) {
 // Auth endpoints (always accessible)
 h.mux.HandleFunc("/api/login", h.handleLogin)
 h.mux.HandleFunc("/api/logout", h.handleLogout)
+h.mux.HandleFunc("/api/version", h.handleVersion)
 
 // Protected API endpoints
 h.mux.HandleFunc("/api/me", h.authMiddleware(h.handleMe))
@@ -304,6 +307,12 @@ func writeError(w http.ResponseWriter, code int, msg string) {
 w.Header().Set("Content-Type", "application/json")
 w.WriteHeader(code)
 json.NewEncoder(w).Encode(map[string]string{"error": msg})
+}
+
+// ---- Version handler --------------------------------------------------------
+
+func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
+writeJSON(w, map[string]string{"version": h.version})
 }
 
 // ---- Auth handlers ----------------------------------------------------------

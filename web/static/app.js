@@ -816,13 +816,14 @@ async function loadFavourites() {
       el.className = 'fav-item';
       el.dataset.path = fav.path;
 
-      // Icon + name (navigable area)
+      // Icon (direct child of fav-item for proper gap spacing)
+      const iconEl = document.createElement('span');
+      iconEl.innerHTML = ICONS.dir; // safe: ICONS.dir is a static constant
+
+      // Name only (without icon)
       const nameSpan = document.createElement('span');
       nameSpan.className = 'fav-name';
-      nameSpan.innerHTML = ICONS.dir; // safe: ICONS.dir is a static constant
-      const nameText = document.createElement('span');
-      nameText.textContent = fav.name;
-      nameSpan.appendChild(nameText);
+      nameSpan.textContent = fav.name;
 
       // Remove button (hidden until hover)
       const removeBtn = document.createElement('button');
@@ -840,6 +841,7 @@ async function loadFavourites() {
         }
       };
 
+      el.appendChild(iconEl);
       el.appendChild(nameSpan);
       el.appendChild(removeBtn);
       el.onclick = () => loadDirectory(fav.path);
@@ -989,6 +991,8 @@ document.addEventListener('DOMContentLoaded', () => {
     loadDirectory(initPath);
   });
 
+  loadVersion();
+
   // Upload button
   document.getElementById('btn-upload').addEventListener('click', () => {
     document.getElementById('file-input').click();
@@ -1120,4 +1124,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
 function updateDotfilesBtn() {
   document.getElementById('btn-dotfiles').classList.toggle('active', state.showDotfiles);
+}
+
+async function loadVersion() {
+  try {
+    const data = await apiGet('/api/version');
+    const el = document.getElementById('sidebar-version');
+    if (el && data && data.version) {
+      el.textContent = 'v' + data.version;
+    }
+  } catch (_) { /* non-critical */ }
 }

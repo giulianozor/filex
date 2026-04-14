@@ -78,7 +78,7 @@ sessionPath = filepath.Join(filepath.Dir(*configPath), "filex_sessions.json")
 }
 authStore := authlib.NewStoreWithPath(sessionPath)
 
-h := handler.New(globalFS, cfg, staticFS, authStore, userFSMap, *configPath)
+h := handler.New(globalFS, cfg, staticFS, authStore, userFSMap, *configPath, Version)
 
 addr := fmt.Sprintf("%s:%d", cfg.Host, cfg.Port)
 if cfg.AuthRequired() {

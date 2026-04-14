@@ -99,6 +99,13 @@ a:hover { color: var(--accent-hover); }
   white-space: nowrap;
 }
 
+.sidebar-version {
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: center;
+  opacity: 0.6;
+}
+
 .fav-remove-btn {
   flex-shrink: 0;
   background: none;
