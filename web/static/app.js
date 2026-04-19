@@ -12,6 +12,7 @@ const state = {
   copySrc: null,
   editorPath: null,
   favourites: [],
+  opAbort: null,   // function to cancel the current running operation
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -78,11 +79,12 @@ async function apiGet(url) {
   return data;
 }
 
-async function apiPost(url, body) {
+async function apiPost(url, body, opts = {}) {
   const r = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
+    signal: opts.signal,
   });
   if (r.status === 401) { window.location.href = '/login'; return null; }
   const data = await r.json();
@@ -199,6 +201,40 @@ function renderFileList() {
     const tr = document.createElement('tr');
     tr.dataset.path = entry.path;
     if (state.selectedFiles.has(entry.path)) tr.classList.add('selected');
+
+    // ── Long-press to select (touch devices) ─────────────────────────────────
+    let _longPressTimer = null;
+    let _longPressStartX = 0, _longPressStartY = 0;
+    tr.addEventListener('touchstart', e => {
+      if (e.target.closest('button, input, a')) return;
+      const t = e.touches[0];
+      _longPressStartX = t.clientX; _longPressStartY = t.clientY;
+      tr.classList.add('long-press-active');
+      _longPressTimer = setTimeout(() => {
+        _longPressTimer = null;
+        tr.classList.remove('long-press-active');
+        const nowSelected = !state.selectedFiles.has(entry.path);
+        cb.checked = nowSelected;
+        toggleSelect(entry.path, nowSelected, tr);
+        if (navigator.vibrate) navigator.vibrate(30);
+      }, 500);
+    }, { passive: true });
+    tr.addEventListener('touchmove', e => {
+      if (_longPressTimer) {
+        const t = e.touches[0];
+        if (Math.abs(t.clientX - _longPressStartX) > 8 || Math.abs(t.clientY - _longPressStartY) > 8) {
+          clearTimeout(_longPressTimer); _longPressTimer = null;
+          tr.classList.remove('long-press-active');
+        }
+      }
+    }, { passive: true });
+    const _lpCancel = () => {
+      if (_longPressTimer) { clearTimeout(_longPressTimer); _longPressTimer = null; }
+      tr.classList.remove('long-press-active');
+    };
+    tr.addEventListener('touchend', _lpCancel, { passive: true });
+    tr.addEventListener('touchcancel', _lpCancel, { passive: true });
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Checkbox
     const tdCheck = document.createElement('td');
@@ -341,7 +377,7 @@ function makeIconBtn(svgStr, title, onclick) {
   btn.className = 'icon-btn';
   btn.title = title;
   btn.innerHTML = svgStr;
-  btn.onclick = onclick;
+  btn.addEventListener('click', onclick);
   return btn;
 }
 
@@ -445,7 +481,36 @@ function downloadFile(path) {
   a.remove();
 }
 
+// ─── Operation progress (sidebar) ────────────────────────────────────────────
+function showOpProgress(label, pct, sub) {
+  const el = document.getElementById('op-progress');
+  if (!el) return;
+  el.style.display = 'block';
+  document.getElementById('op-progress-label').textContent = label;
+  const fill = document.getElementById('op-progress-fill');
+  if (pct == null) {
+    fill.classList.add('indeterminate');
+    fill.style.width = '';
+  } else {
+    fill.classList.remove('indeterminate');
+    fill.style.width = pct + '%';
+  }
+  document.getElementById('op-progress-sub').textContent = sub || '';
+}
+
+function hideOpProgress() {
+  const el = document.getElementById('op-progress');
+  if (el) el.style.display = 'none';
+  state.opAbort = null;
+}
+
 // ─── Upload ───────────────────────────────────────────────────────────────────
+
+// Sentinel error thrown when an XHR upload is aborted by the user.
+class UploadAbortError extends Error {
+  constructor() { super('Upload cancelled'); this.name = 'UploadAbortError'; }
+}
+
 async function uploadFiles(files) {
   if (!files || files.length === 0) return;
   const bar = document.getElementById('upload-progress-bar');
@@ -454,18 +519,29 @@ async function uploadFiles(files) {
 
   const total = files.length;
   let done = 0;
+  let cancelled = false;
+  let currentXhr = null;
+
+  state.opAbort = () => {
+    cancelled = true;
+    if (currentXhr) currentXhr.abort();
+  };
+  showOpProgress('Uploading…', 0, `0 / ${total} file${total !== 1 ? 's' : ''}`);
 
   for (const file of files) {
+    if (cancelled) break;
     const fd = new FormData();
     fd.append('file', file);
     try {
       await new Promise((resolve, reject) => {
         const xhr = new XMLHttpRequest();
+        currentXhr = xhr;
         xhr.open('POST', '/api/upload?path=' + encodeURIComponent(state.currentPath));
         xhr.upload.onprogress = e => {
           if (e.lengthComputable) {
             const pct = ((done + e.loaded / e.total) / total) * 100;
             bar.style.width = pct + '%';
+            showOpProgress('Uploading…', pct, file.name);
           }
         };
         xhr.onload = () => {
@@ -476,18 +552,29 @@ async function uploadFiles(files) {
           }
         };
         xhr.onerror = () => reject(new Error('Network error'));
+        xhr.onabort = () => reject(new UploadAbortError());
         xhr.send(fd);
       });
       done++;
-      bar.style.width = (done / total * 100) + '%';
+      const pct = (done / total) * 100;
+      bar.style.width = pct + '%';
+      showOpProgress('Uploading…', pct, `${done} / ${total} file${total !== 1 ? 's' : ''}`);
     } catch (e) {
+      if (e instanceof UploadAbortError || cancelled) break;
       toast('Upload failed: ' + e.message, 'error');
+    } finally {
+      currentXhr = null;
     }
   }
 
+  hideOpProgress();
   bar.style.width = '100%';
   setTimeout(() => { bar.style.display = 'none'; bar.style.width = '0%'; }, 600);
-  toast(done + ' file' + (done === 1 ? '' : 's') + ' uploaded', 'success');
+  if (cancelled) {
+    toast('Upload cancelled', 'info');
+  } else if (done > 0) {
+    toast(done + ' file' + (done === 1 ? '' : 's') + ' uploaded', 'success');
+  }
   loadDirectory(state.currentPath);
 }
 
@@ -616,9 +703,19 @@ async function doMove() {
   const btn = document.getElementById('move-confirm');
   bar.classList.add('indeterminate');
   btn.disabled = true;
+
+  const controller = new AbortController();
+  state.opAbort = () => controller.abort();
+  const sub0 = srcs.length > 1 ? `0 / ${srcs.length} items` : basename(srcs[0]);
+  showOpProgress('Moving…', null, sub0);
+
+  let done = 0;
   try {
     for (const src of srcs) {
-      await apiPost('/api/move', { src, dst });
+      await apiPost('/api/move', { src, dst }, { signal: controller.signal });
+      done++;
+      showOpProgress('Moving…', (done / srcs.length) * 100,
+        srcs.length > 1 ? `${done} / ${srcs.length} items` : basename(src));
     }
     toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
@@ -626,8 +723,13 @@ async function doMove() {
     closeModal('modal-move');
     loadDirectory(state.currentPath);
   } catch (e) {
-    toast('Move failed: ' + e.message, 'error');
+    if (e.name === 'AbortError') {
+      toast('Move cancelled', 'info');
+    } else {
+      toast('Move failed: ' + e.message, 'error');
+    }
   } finally {
+    hideOpProgress();
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
     btn.disabled = false;
@@ -686,9 +788,19 @@ async function doCopy() {
   const btn = document.getElementById('copy-confirm');
   bar.classList.add('indeterminate');
   btn.disabled = true;
+
+  const controller = new AbortController();
+  state.opAbort = () => controller.abort();
+  const sub0 = srcs.length > 1 ? `0 / ${srcs.length} items` : basename(srcs[0]);
+  showOpProgress('Copying…', null, sub0);
+
+  let done = 0;
   try {
     for (const src of srcs) {
-      await apiPost('/api/copy', { src, dst });
+      await apiPost('/api/copy', { src, dst }, { signal: controller.signal });
+      done++;
+      showOpProgress('Copying…', (done / srcs.length) * 100,
+        srcs.length > 1 ? `${done} / ${srcs.length} items` : basename(src));
     }
     toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
@@ -696,8 +808,13 @@ async function doCopy() {
     closeModal('modal-copy');
     loadDirectory(state.currentPath);
   } catch (e) {
-    toast('Copy failed: ' + e.message, 'error');
+    if (e.name === 'AbortError') {
+      toast('Copy cancelled', 'info');
+    } else {
+      toast('Copy failed: ' + e.message, 'error');
+    }
   } finally {
+    hideOpProgress();
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
     btn.disabled = false;
@@ -1126,6 +1243,11 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   initDragDrop();
+
+  // Cancel active operation
+  document.getElementById('op-progress-cancel').addEventListener('click', () => {
+    if (state.opAbort) state.opAbort();
+  });
 });
 
 function updateDotfilesBtn() {
