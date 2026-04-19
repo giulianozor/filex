@@ -134,6 +134,74 @@ a:hover { color: var(--accent-hover); }
 .disk-bar-fill.warn { background: var(--warning); }
 .disk-bar-fill.danger { background: var(--danger); }
 
+/* ── Sidebar operation progress ──────────── */
+#op-progress {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+.op-progress-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+#op-progress-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#op-progress-cancel {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+#op-progress-cancel:hover { color: var(--danger); background: rgba(255,68,68,0.12); }
+.op-progress-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 5px;
+}
+#op-progress-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 2px;
+  width: 0%;
+  transition: width 0.2s;
+}
+#op-progress-fill.indeterminate {
+  width: 100% !important;
+  background: linear-gradient(90deg, transparent 0%, var(--accent) 50%, transparent 100%);
+  background-size: 200% 100%;
+  animation: indeterminate-slide 1.2s infinite linear;
+  transition: none;
+}
+#op-progress-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Long-press row highlight on touch devices */
+.file-table tbody tr.long-press-active { background: var(--card-hover); }
+
 .sidebar-bottom {
   border-top: 1px solid var(--border);
   padding: 10px 12px;
@@ -345,6 +413,9 @@ a:hover { color: var(--accent-hover); }
   display: inline-flex;
   align-items: center;
   transition: background 0.12s, color 0.12s;
+  /* Prevent 300 ms tap delay and double-tap zoom on iOS Safari */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .icon-btn:hover { background: var(--card-hover); color: var(--text); }
 .icon-btn.danger:hover { background: #3d1515; color: var(--danger); }

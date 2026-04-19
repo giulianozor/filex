@@ -28,6 +28,18 @@
       <div id="fav-list"></div>
     </div>
 
+    <!-- Operation progress (copy / move / upload) -->
+    <div id="op-progress" style="display:none">
+      <div class="op-progress-header">
+        <span id="op-progress-label">Operation…</span>
+        <button id="op-progress-cancel" title="Cancel operation">✕</button>
+      </div>
+      <div class="op-progress-track">
+        <div id="op-progress-fill"></div>
+      </div>
+      <div id="op-progress-sub"></div>
+    </div>
+
     <div class="disk-info" id="disk-info">
       <div class="disk-label">
         <span>Disk Usage</span>
