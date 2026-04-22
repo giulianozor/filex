@@ -13,6 +13,8 @@ const state = {
   editorPath: null,
   favourites: [],
   opAbort: null,   // function to cancel the current running operation
+  previewList: [],  // previewable file entries in the current directory
+  previewIndex: -1, // index of the currently previewed entry in previewList
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -849,7 +851,34 @@ async function saveEditor() {
 }
 
 // ─── Preview ──────────────────────────────────────────────────────────────────
+const PREVIEWABLE_HINTS = new Set(['image', 'video', 'audio', 'text', 'code']);
+
+function buildPreviewList() {
+  return state.entries.filter(e => !e.is_dir && PREVIEWABLE_HINTS.has(e.mime_hint));
+}
+
+function updatePreviewNav() {
+  const prevBtn = document.getElementById('preview-prev');
+  const nextBtn = document.getElementById('preview-next');
+  const hasMultiple = state.previewList.length > 1;
+  prevBtn.style.display = hasMultiple ? '' : 'none';
+  nextBtn.style.display = hasMultiple ? '' : 'none';
+  prevBtn.disabled = state.previewIndex <= 0;
+  nextBtn.disabled = state.previewIndex >= state.previewList.length - 1;
+}
+
+function navigatePreview(dir) {
+  const newIdx = state.previewIndex + dir;
+  if (newIdx < 0 || newIdx >= state.previewList.length) return;
+  openPreview(state.previewList[newIdx]);
+}
+
 async function openPreview(entry) {
+  const list = buildPreviewList();
+  const idx = list.findIndex(e => e.path === entry.path);
+  state.previewList = list;
+  state.previewIndex = idx;
+
   const container = document.getElementById('preview-container');
   const title = document.getElementById('preview-title');
   const dlBtn = document.getElementById('preview-download');
@@ -864,6 +893,10 @@ async function openPreview(entry) {
   moveBtn.onclick = () => { closeModal('modal-preview'); openMoveModal(entry.path); };
   copyBtn.onclick = () => { closeModal('modal-preview'); openCopyModal(entry.path); };
   deleteBtn.onclick = () => { closeModal('modal-preview'); deleteFiles([entry.path]); };
+
+  document.getElementById('preview-prev').onclick = () => navigatePreview(-1);
+  document.getElementById('preview-next').onclick = () => navigatePreview(1);
+  updatePreviewNav();
 
   container.innerHTML = '';
 
@@ -1069,6 +1102,12 @@ function changeFontSize(delta) {
 document.addEventListener('keydown', e => {
   // Ignore if inside input/textarea
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+
+  // Arrow navigation inside preview modal
+  if (document.getElementById('modal-preview').classList.contains('open')) {
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); navigatePreview(-1); return; }
+    if (e.key === 'ArrowRight') { e.preventDefault(); navigatePreview(1);  return; }
+  }
 
   if (e.key === 'F5') { e.preventDefault(); loadDirectory(state.currentPath); }
   if (e.key === 'Delete') {

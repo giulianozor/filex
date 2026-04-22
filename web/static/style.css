@@ -498,6 +498,7 @@ td:first-child { width: 36px; padding-right: 4px; }
 
 .modal-body { flex: 1; overflow: auto; }
 .modal-footer { margin-top: 18px; display: flex; justify-content: flex-end; gap: 8px; }
+.preview-nav { margin-right: auto; display: flex; gap: 8px; }
 
 /* text editor */
 #editor-textarea {
