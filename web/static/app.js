@@ -894,8 +894,6 @@ async function openPreview(entry) {
   copyBtn.onclick = () => { closeModal('modal-preview'); openCopyModal(entry.path); };
   deleteBtn.onclick = () => { closeModal('modal-preview'); deleteFiles([entry.path]); };
 
-  document.getElementById('preview-prev').onclick = () => navigatePreview(-1);
-  document.getElementById('preview-next').onclick = () => navigatePreview(1);
   updatePreviewNav();
 
   container.innerHTML = '';
@@ -1154,6 +1152,10 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadVersion();
+
+  // Preview navigation buttons (static handlers - direction never changes)
+  document.getElementById('preview-prev').onclick = () => navigatePreview(-1);
+  document.getElementById('preview-next').onclick = () => navigatePreview(1);
 
   // Upload button
   document.getElementById('btn-upload').addEventListener('click', () => {
