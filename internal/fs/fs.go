@@ -575,6 +575,11 @@ func mimeHint(name string, isDir bool) string {
 if isDir {
 return "dir"
 }
+// Strip qBittorrent incomplete-download suffix so that, e.g.,
+// "video.mp4.!qB" is treated as "video.mp4".
+if strings.HasSuffix(strings.ToLower(name), ".!qb") {
+name = name[:len(name)-4]
+}
 ext := strings.ToLower(filepath.Ext(name))
 switch ext {
 case ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico":

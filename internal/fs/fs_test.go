@@ -284,6 +284,17 @@ func TestMimeHint(t *testing.T) {
 		{"main.go", "code"},
 		{"readme.txt", "text"},
 		{"unknown.xyz", "file"},
+		// qBittorrent incomplete downloads: strip .!qB and use underlying ext
+		{"clip.mp4.!qB", "video"},
+		{"readme.txt.!qB", "text"},
+		{"photo.jpg.!qB", "image"},
+		{"song.mp3.!qB", "audio"},
+		{"doc.pdf.!qB", "pdf"},
+		{"archive.zip.!qB", "archive"},
+		{"main.go.!qB", "code"},
+		{"unknown.xyz.!qB", "file"},
+		// case-insensitive suffix match
+		{"clip.mp4.!QB", "video"},
 	}
 	for _, c := range cases {
 		got := mimeHint(c.name, false)
