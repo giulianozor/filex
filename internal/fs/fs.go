@@ -576,6 +576,12 @@ if isDir {
 return "dir"
 }
 ext := strings.ToLower(filepath.Ext(name))
+// Handle incomplete-download extensions starting with "!" (e.g. ".!qB" from
+// qBittorrent) by stripping that suffix and inspecting the real extension.
+if strings.HasPrefix(ext, ".!") {
+name = name[:len(name)-len(ext)]
+ext = strings.ToLower(filepath.Ext(name))
+}
 switch ext {
 case ".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".svg", ".ico":
 return "image"

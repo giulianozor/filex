@@ -284,6 +284,12 @@ func TestMimeHint(t *testing.T) {
 		{"main.go", "code"},
 		{"readme.txt", "text"},
 		{"unknown.xyz", "file"},
+		// Incomplete download files (extension starts with "!")
+		{"movie.mp4.!qB", "video"},
+		{"photo.jpg.!qB", "image"},
+		{"song.mp3.!ut", "audio"},
+		{"doc.pdf.!ab", "pdf"},
+		{"unknown.xyz.!qB", "file"},
 	}
 	for _, c := range cases {
 		got := mimeHint(c.name, false)

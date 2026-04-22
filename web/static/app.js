@@ -704,6 +704,8 @@ async function doMove() {
   bar.classList.add('indeterminate');
   btn.disabled = true;
 
+  closeModal('modal-move');
+
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
   const sub0 = srcs.length > 1 ? `0 / ${srcs.length} items` : basename(srcs[0]);
@@ -720,7 +722,6 @@ async function doMove() {
     toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
-    closeModal('modal-move');
     loadDirectory(state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
@@ -789,6 +790,8 @@ async function doCopy() {
   bar.classList.add('indeterminate');
   btn.disabled = true;
 
+  closeModal('modal-copy');
+
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
   const sub0 = srcs.length > 1 ? `0 / ${srcs.length} items` : basename(srcs[0]);
@@ -805,7 +808,6 @@ async function doCopy() {
     toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
-    closeModal('modal-copy');
     loadDirectory(state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
@@ -849,6 +851,10 @@ async function saveEditor() {
 }
 
 // ─── Preview ──────────────────────────────────────────────────────────────────
+function getPreviewableEntries() {
+  return getSortedEntries().filter(e => !e.is_dir);
+}
+
 async function openPreview(entry) {
   const container = document.getElementById('preview-container');
   const title = document.getElementById('preview-title');
@@ -856,6 +862,8 @@ async function openPreview(entry) {
   const moveBtn = document.getElementById('preview-move');
   const copyBtn = document.getElementById('preview-copy');
   const deleteBtn = document.getElementById('preview-delete');
+  const prevBtn = document.getElementById('preview-prev');
+  const nextBtn = document.getElementById('preview-next');
 
   title.textContent = entry.name;
   dlBtn.href = '/api/download?path=' + encodeURIComponent(entry.path);
@@ -864,6 +872,14 @@ async function openPreview(entry) {
   moveBtn.onclick = () => { closeModal('modal-preview'); openMoveModal(entry.path); };
   copyBtn.onclick = () => { closeModal('modal-preview'); openCopyModal(entry.path); };
   deleteBtn.onclick = () => { closeModal('modal-preview'); deleteFiles([entry.path]); };
+
+  // Prev / Next navigation
+  const previewable = getPreviewableEntries();
+  const idx = previewable.findIndex(e => e.path === entry.path);
+  prevBtn.style.display = idx > 0 ? '' : 'none';
+  nextBtn.style.display = idx < previewable.length - 1 ? '' : 'none';
+  prevBtn.onclick = () => { if (idx > 0) openPreview(previewable[idx - 1]); };
+  nextBtn.onclick = () => { if (idx < previewable.length - 1) openPreview(previewable[idx + 1]); };
 
   container.innerHTML = '';
 
