@@ -95,7 +95,7 @@ async function apiPost(url, body, opts = {}) {
 }
 
 // ─── Directory loading ────────────────────────────────────────────────────────
-async function loadDirectory(path) {
+async function loadDirectory(path, { addHistory = true } = {}) {
   path = path || '/';
   state.currentPath = path;
   state.selectedFiles.clear();
@@ -108,7 +108,7 @@ async function loadDirectory(path) {
     renderBreadcrumb();
     renderFileList();
     loadDiskInfo();
-    updateUrl(path);
+    if (addHistory) updateUrl(path);
   } catch (e) {
     toast('Error loading directory: ' + e.message, 'error');
   }
@@ -1279,8 +1279,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Browser back/forward
   window.addEventListener('popstate', e => {
-    const path = (e.state && e.state.path) || '/';
-    loadDirectory(path);
+    const path = (e.state && e.state.path) ||
+                 new URL(window.location).searchParams.get('path') || '/';
+    loadDirectory(path, { addHistory: false });
+  });
+
+  // Handle page restoration from bfcache (e.g. browser back button from another site)
+  window.addEventListener('pageshow', e => {
+    if (e.persisted) {
+      loadDirectory(state.currentPath, { addHistory: false });
+    }
   });
 
   initDragDrop();
