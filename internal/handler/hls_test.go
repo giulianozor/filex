@@ -2,7 +2,10 @@ package handler
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestHandleHLSPlaylistMissingPath(t *testing.T) {
@@ -50,3 +53,75 @@ func TestHandleHLSSegmentSessionNotFound(t *testing.T) {
 		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
+
+// TestWaitForPlaylistRequiresEXTINF verifies that waitForPlaylist does NOT
+// return early when the playlist file exists but contains only an HLS header
+// (which is what ffmpeg writes before any segment is committed). This prevents
+// the video player from receiving a header-only manifest and showing duration 0.
+func TestWaitForPlaylistRequiresEXTINF(t *testing.T) {
+	dir := t.TempDir()
+	playlistPath := filepath.Join(dir, "playlist.m3u8")
+	done := make(chan struct{})
+
+	// Write an HLS header-only playlist (no #EXTINF lines) — this is exactly
+	// what ffmpeg creates immediately after starting, before the first segment.
+	headerOnly := "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXT-X-MEDIA-SEQUENCE:0\n"
+	if err := os.WriteFile(playlistPath, []byte(headerOnly), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// waitForPlaylist must NOT return yet — no #EXTINF present.
+	// We run it in a goroutine and check that it hasn't returned after
+	// notReturnedAfter. This must be > hlsPollInterval (200ms) so at least
+	// one poll cycle completes.
+	const notReturnedAfter = 350 * time.Millisecond
+	result := make(chan error, 1)
+	go func() {
+		result <- waitForPlaylist(dir, done, 2*time.Second)
+	}()
+
+	select {
+	case err := <-result:
+		t.Fatalf("waitForPlaylist returned early (err=%v); should wait for #EXTINF", err)
+	case <-time.After(notReturnedAfter):
+		// Good: still waiting.
+	}
+
+	// Now write a valid playlist with a segment entry.
+	validPlaylist := headerOnly + "#EXTINF:10.000000,\nseg000.ts\n#EXT-X-ENDLIST\n"
+	if err := os.WriteFile(playlistPath, []byte(validPlaylist), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// waitForPlaylist should return nil now.
+	select {
+	case err := <-result:
+		if err != nil {
+			t.Fatalf("waitForPlaylist returned error after valid playlist written: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waitForPlaylist did not return after valid playlist was written")
+	}
+}
+
+// TestWaitForPlaylistErrorsWhenDoneWithNoSegments verifies that waitForPlaylist
+// returns an error when the done channel is closed but no #EXTINF was ever written.
+func TestWaitForPlaylistErrorsWhenDoneWithNoSegments(t *testing.T) {
+	dir := t.TempDir()
+	playlistPath := filepath.Join(dir, "playlist.m3u8")
+	done := make(chan struct{})
+
+	// Write header-only playlist.
+	if err := os.WriteFile(playlistPath, []byte("#EXTM3U\n#EXT-X-MEDIA-SEQUENCE:0\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Signal done immediately (simulating ffmpeg failing without writing any segments).
+	close(done)
+
+	err := waitForPlaylist(dir, done, 5*time.Second)
+	if err == nil {
+		t.Fatal("expected error when done closes without any #EXTINF, got nil")
+	}
+}
+

@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"fmt"
 	"log"
@@ -145,23 +146,27 @@ func startTranscoding(sess *hlsSession, realPath string) {
 	}()
 }
 
-// waitForPlaylist polls until playlist.m3u8 exists in dir or the deadline is
-// exceeded. It returns as soon as ffmpeg has written the first segment, so
-// callers can begin streaming without waiting for the full transcode.
+// waitForPlaylist polls until playlist.m3u8 contains at least one segment entry
+// (#EXTINF: line) or the deadline is exceeded.
+//
+// Merely waiting for the file to exist is not sufficient: ffmpeg creates the
+// playlist header (EXTM3U, EXT-X-VERSION, etc.) before any segment is written.
+// If we return the header-only playlist to hls.js it sees a stream with no
+// segments, reports duration 0 and the video player appears broken.
 func waitForPlaylist(dir string, done <-chan struct{}, timeout time.Duration) error {
 	playlistPath := filepath.Join(dir, "playlist.m3u8")
 	deadline := time.Now().Add(timeout)
 	for {
-		if _, err := os.Stat(playlistPath); err == nil {
+		if data, err := os.ReadFile(playlistPath); err == nil && bytes.Contains(data, []byte("#EXTINF:")) {
 			return nil
 		}
 		select {
 		case <-done:
-			// Transcoding finished — check one final time.
-			if _, err := os.Stat(playlistPath); err == nil {
+			// Transcoding finished — do a final check.
+			if data, err := os.ReadFile(playlistPath); err == nil && bytes.Contains(data, []byte("#EXTINF:")) {
 				return nil
 			}
-			return fmt.Errorf("transcoding finished without creating a playlist")
+			return fmt.Errorf("transcoding finished without producing a playable playlist")
 		default:
 		}
 		if time.Now().After(deadline) {
