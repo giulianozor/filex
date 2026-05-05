@@ -345,6 +345,13 @@ return nil
 return entry, err
 }
 
+// RealPath returns the absolute OS path for a virtual path within this FS.
+// It performs the same path-jail validation as other FS operations.
+// The returned path can be passed to external tools such as ffmpeg.
+func (f *FS) RealPath(path string) (string, error) {
+return f.resolve(path)
+}
+
 // OpenForDownload returns an open file handle for the file at path.
 // Access is checked at open time (inside runAs) using the login user's
 // credentials; the returned *os.File is safe to read after runAs returns

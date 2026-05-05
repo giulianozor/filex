@@ -15,6 +15,7 @@ const state = {
   opAbort: null,   // function to cancel the current running operation
   previewList: [],  // previewable file entries in the current directory
   previewIndex: -1, // index of the currently previewed entry in previewList
+  hlsInstance: null, // active hls.js instance for the current video preview
 };
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -879,6 +880,12 @@ async function openPreview(entry) {
   state.previewList = list;
   state.previewIndex = idx;
 
+  // Destroy any previous hls.js instance before loading a new preview.
+  if (state.hlsInstance) {
+    state.hlsInstance.destroy();
+    state.hlsInstance = null;
+  }
+
   const container = document.getElementById('preview-container');
   const title = document.getElementById('preview-title');
   const dlBtn = document.getElementById('preview-download');
@@ -911,9 +918,37 @@ async function openPreview(entry) {
     vid.controls = true;
     vid.autoplay = false;
     vid.style.maxWidth = '100%';
-    const src = document.createElement('source');
-    src.src = '/api/download?path=' + encodeURIComponent(entry.path);
-    vid.appendChild(src);
+
+    const hlsSrc = '/api/hls/playlist?path=' + encodeURIComponent(entry.path);
+    const nativeSrc = '/api/download?path=' + encodeURIComponent(entry.path);
+
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      // Use hls.js for HLS playback with multi-connection segment downloads.
+      const hls = new Hls();
+      state.hlsInstance = hls;
+      let hlsFailed = false;
+      hls.on(Hls.Events.ERROR, (_evt, data) => {
+        if (data.fatal && !hlsFailed) {
+          hlsFailed = true;
+          hls.destroy();
+          state.hlsInstance = null;
+          // Fall back to native video source on fatal HLS error.
+          vid.src = nativeSrc;
+          vid.load();
+        }
+      });
+      hls.loadSource(hlsSrc);
+      hls.attachMedia(vid);
+    } else if (vid.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS support (Safari).
+      vid.src = hlsSrc;
+    } else {
+      // Native video fallback (no HLS support).
+      const src = document.createElement('source');
+      src.src = nativeSrc;
+      vid.appendChild(src);
+    }
+
     container.appendChild(vid);
     openModal('modal-preview');
   } else if (hint === 'audio') {
@@ -1045,6 +1080,11 @@ function closeModal(id) {
     el.classList.remove('open');
     // Stop any media playing inside the modal
     el.querySelectorAll('video, audio').forEach(m => { m.pause(); m.src = ''; });
+    // Destroy any active hls.js instance when the preview modal is closed.
+    if (id === 'modal-preview' && state.hlsInstance) {
+      state.hlsInstance.destroy();
+      state.hlsInstance = null;
+    }
   }
 }
 

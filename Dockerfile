@@ -12,7 +12,7 @@ RUN go build -ldflags "-X main.Version=$(git describe --tags --always 2>/dev/nul
 # Stage 2: minimal runtime image
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata ffmpeg
 
 COPY --from=builder /filex /usr/local/bin/filex
 

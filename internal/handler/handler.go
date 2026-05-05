@@ -78,10 +78,11 @@ h.mux.ServeHTTP(w, r)
 // ---- static assets that are always public -----------------------------------
 
 var publicPaths = map[string]bool{
-"/login":      true,
-"/login.html": true,
-"/style.css":  true,
-"/app.js":     true,
+"/login":       true,
+"/login.html":  true,
+"/style.css":   true,
+"/app.js":      true,
+"/hls.min.js":  true,
 }
 
 func isPublicPath(path string) bool {
@@ -113,6 +114,8 @@ h.mux.HandleFunc("/api/favourites", h.authMiddleware(h.handleFavourites))
 h.mux.HandleFunc("/api/favourites/add", h.authMiddleware(h.handleFavouritesAdd))
 h.mux.HandleFunc("/api/favourites/remove", h.authMiddleware(h.handleFavouritesRemove))
 h.mux.HandleFunc("/api/config", h.authMiddleware(h.handleConfig))
+h.mux.HandleFunc("/api/hls/playlist", h.authMiddleware(h.handleHLSPlaylist))
+h.mux.HandleFunc("/api/hls/segment", h.authMiddleware(h.handleHLSSegment))
 
 // /login is always public — serves login.html.
 h.mux.HandleFunc("/login", func(w http.ResponseWriter, r *http.Request) {
