@@ -15,9 +15,10 @@ import (
 )
 
 const (
-	hlsSegmentLen   = 10            // seconds per HLS segment
-	hlsSessionTTL   = 2 * time.Hour // how long to keep cached sessions
-	hlsReadyTimeout = 5 * time.Minute
+	hlsSegmentLen    = 10              // seconds per HLS segment
+	hlsSessionTTL    = 2 * time.Hour  // how long to keep cached sessions
+	hlsReadyTimeout  = 5 * time.Minute
+	hlsCleanupInterval = 30 * time.Minute // interval between session cleanup sweeps
 )
 
 // hlsTempDir returns the base directory for HLS temp files.
@@ -58,7 +59,7 @@ func startHLSCleanup() {
 	hlsCleanOnce.Do(func() {
 		go func() {
 			for {
-				time.Sleep(30 * time.Minute)
+				time.Sleep(hlsCleanupInterval)
 				hlsMu.Lock()
 				for k, s := range hlsSessions {
 					s.mu.Lock()
@@ -79,13 +80,19 @@ func startHLSCleanup() {
 
 // transcodeHLS runs ffmpeg to convert realPath into HLS segments inside dir.
 // The output playlist is dir/playlist.m3u8 and segments are dir/segNNN.ts.
+// It first attempts to copy the video stream (fast, no re-encoding). If that
+// fails — e.g. because the source uses a codec incompatible with MPEG-TS (such
+// as VP9 or AV1) — it falls back to re-encoding with H.264/AAC which is
+// universally supported by HLS players.
 func transcodeHLS(realPath, dir string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return fmt.Errorf("create HLS dir: %w", err)
 	}
 	playlist := filepath.Join(dir, "playlist.m3u8")
 	segPattern := filepath.Join(dir, "seg%03d.ts")
-	cmd := exec.Command("ffmpeg",
+
+	// Attempt 1: copy video stream (fastest, preserves quality).
+	copyArgs := []string{
 		"-i", realPath,
 		"-c:v", "copy",
 		"-c:a", "aac",
@@ -95,8 +102,32 @@ func transcodeHLS(realPath, dir string) error {
 		"-hls_segment_filename", segPattern,
 		"-y",
 		playlist,
-	)
-	if err := cmd.Run(); err != nil {
+	}
+	if err := exec.Command("ffmpeg", copyArgs...).Run(); err == nil {
+		return nil
+	}
+
+	// Attempt 2: re-encode to H.264 for codecs incompatible with MPEG-TS
+	// (e.g. VP9, AV1). ultrafast preset minimises CPU time at the cost of
+	// slightly larger files.
+	_ = os.RemoveAll(dir)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return fmt.Errorf("create HLS dir (re-encode): %w", err)
+	}
+	encodeArgs := []string{
+		"-i", realPath,
+		"-c:v", "libx264",
+		"-preset", "ultrafast",
+		"-crf", "23",
+		"-c:a", "aac",
+		"-f", "hls",
+		"-hls_time", fmt.Sprintf("%d", hlsSegmentLen),
+		"-hls_list_size", "0",
+		"-hls_segment_filename", segPattern,
+		"-y",
+		playlist,
+	}
+	if err := exec.Command("ffmpeg", encodeArgs...).Run(); err != nil {
 		return fmt.Errorf("ffmpeg transcoding of %q: %w", realPath, err)
 	}
 	return nil
@@ -157,7 +188,7 @@ func (h *Handler) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 		go func() {
 			defer func() {
 				if p := recover(); p != nil {
-					sess.err = fmt.Errorf("transcoding panic: %v", p)
+					sess.err = fmt.Errorf("transcoding panic for %q: %v", realPath, p)
 				}
 				close(sess.ready)
 			}()
