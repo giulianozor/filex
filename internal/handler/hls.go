@@ -15,21 +15,22 @@ import (
 )
 
 const (
-	hlsSegmentLen    = 10              // seconds per HLS segment
-	hlsSessionTTL    = 2 * time.Hour  // how long to keep cached sessions
-	hlsReadyTimeout  = 5 * time.Minute
-	hlsCleanupInterval = 30 * time.Minute // interval between session cleanup sweeps
+	hlsSegmentLen      = 10             // seconds per HLS segment
+	hlsSessionTTL      = 2 * time.Hour  // how long to keep cached sessions
+	hlsPlaylistTimeout = 60 * time.Second // max wait for first playlist to appear
+	hlsSegmentTimeout  = 120 * time.Second // max wait for a segment to be committed
+	hlsCleanupInterval = 30 * time.Minute  // interval between session cleanup sweeps
 )
 
-// hlsTempDir returns the base directory for HLS temp files.
+// hlsTempDir is the base directory for HLS temp files.
 // Using os.TempDir() instead of a hardcoded path works in all environments.
 var hlsTempDir = filepath.Join(os.TempDir(), "filex-hls")
 
 // hlsSession tracks a single HLS transcoding session.
 type hlsSession struct {
 	dir      string       // temp directory containing segments + playlist
-	ready    chan struct{} // closed when transcoding finishes (ok or err)
-	err      error
+	done     chan struct{} // closed when transcoding goroutine exits (success or failure)
+	err      error        // nil = success; set before done is closed
 	mu       sync.Mutex
 	lastUsed time.Time
 }
@@ -78,63 +79,151 @@ func startHLSCleanup() {
 	})
 }
 
-// transcodeHLS runs ffmpeg to convert realPath into HLS segments inside dir.
-// The output playlist is dir/playlist.m3u8 and segments are dir/segNNN.ts.
-// It first attempts to copy the video stream (fast, no re-encoding). If that
-// fails — e.g. because the source uses a codec incompatible with MPEG-TS (such
-// as VP9 or AV1) — it falls back to re-encoding with H.264/AAC which is
-// universally supported by HLS players.
-func transcodeHLS(realPath, dir string) error {
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("create HLS dir: %w", err)
-	}
-	playlist := filepath.Join(dir, "playlist.m3u8")
-	segPattern := filepath.Join(dir, "seg%03d.ts")
+// startTranscoding launches ffmpeg in a background goroutine.
+// It tries stream-copy first (fast for H.264/H.265); if that fails it
+// falls back to re-encoding with libx264 (for VP9, AV1, etc.).
+// sess.done is closed when the goroutine exits; sess.err is set on failure.
+func startTranscoding(sess *hlsSession, realPath string) {
+	go func() {
+		defer func() {
+			if p := recover(); p != nil {
+				sess.mu.Lock()
+				sess.err = fmt.Errorf("transcoding panic for %q: %v", realPath, p)
+				sess.mu.Unlock()
+			}
+			close(sess.done)
+		}()
 
-	// Attempt 1: copy video stream (fastest, preserves quality).
-	copyArgs := []string{
-		"-i", realPath,
-		"-c:v", "copy",
-		"-c:a", "aac",
-		"-f", "hls",
-		"-hls_time", fmt.Sprintf("%d", hlsSegmentLen),
-		"-hls_list_size", "0",
-		"-hls_segment_filename", segPattern,
-		"-y",
-		playlist,
-	}
-	if err := exec.Command("ffmpeg", copyArgs...).Run(); err == nil {
-		return nil
-	}
+		dir := sess.dir
+		playlist := filepath.Join(dir, "playlist.m3u8")
+		segPattern := filepath.Join(dir, "seg%03d.ts")
 
-	// Attempt 2: re-encode to H.264 for codecs incompatible with MPEG-TS
-	// (e.g. VP9, AV1). ultrafast preset minimises CPU time at the cost of
-	// slightly larger files.
-	_ = os.RemoveAll(dir)
-	if err := os.MkdirAll(dir, 0700); err != nil {
-		return fmt.Errorf("create HLS dir (re-encode): %w", err)
-	}
-	encodeArgs := []string{
-		"-i", realPath,
-		"-c:v", "libx264",
-		"-preset", "ultrafast",
-		"-crf", "23",
-		"-c:a", "aac",
-		"-f", "hls",
-		"-hls_time", fmt.Sprintf("%d", hlsSegmentLen),
-		"-hls_list_size", "0",
-		"-hls_segment_filename", segPattern,
-		"-y",
-		playlist,
-	}
-	if err := exec.Command("ffmpeg", encodeArgs...).Run(); err != nil {
-		return fmt.Errorf("ffmpeg transcoding of %q: %w", realPath, err)
-	}
-	return nil
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			sess.mu.Lock()
+			sess.err = fmt.Errorf("create HLS dir: %w", err)
+			sess.mu.Unlock()
+			return
+		}
+
+		// Attempt 1: stream-copy video (fast for H.264/H.265).
+		copyArgs := []string{
+			"-i", realPath,
+			"-c:v", "copy", "-c:a", "aac",
+			"-f", "hls",
+			"-hls_time", fmt.Sprintf("%d", hlsSegmentLen),
+			"-hls_list_size", "0",
+			"-hls_segment_filename", segPattern,
+			"-y", playlist,
+		}
+		if err := exec.Command("ffmpeg", copyArgs...).Run(); err == nil {
+			return // copy succeeded
+		}
+
+		// Attempt 2: re-encode to H.264 for codecs incompatible with MPEG-TS.
+		_ = os.RemoveAll(dir)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			sess.mu.Lock()
+			sess.err = fmt.Errorf("create HLS dir (re-encode): %w", err)
+			sess.mu.Unlock()
+			return
+		}
+		encodeArgs := []string{
+			"-i", realPath,
+			"-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+			"-c:a", "aac",
+			"-f", "hls",
+			"-hls_time", fmt.Sprintf("%d", hlsSegmentLen),
+			"-hls_list_size", "0",
+			"-hls_segment_filename", segPattern,
+			"-y", playlist,
+		}
+		if err := exec.Command("ffmpeg", encodeArgs...).Run(); err != nil {
+			sess.mu.Lock()
+			sess.err = fmt.Errorf("ffmpeg transcoding of %q: %w", realPath, err)
+			sess.mu.Unlock()
+		}
+	}()
 }
 
-// handleHLSPlaylist transcodes the requested video to HLS and returns the m3u8 playlist.
-// Results are cached by file path + mtime so subsequent requests are instant.
+// waitForPlaylist polls until playlist.m3u8 exists in dir or the deadline is
+// exceeded. It returns as soon as ffmpeg has written the first segment, so
+// callers can begin streaming without waiting for the full transcode.
+func waitForPlaylist(dir string, done <-chan struct{}, timeout time.Duration) error {
+	playlistPath := filepath.Join(dir, "playlist.m3u8")
+	deadline := time.Now().Add(timeout)
+	for {
+		if _, err := os.Stat(playlistPath); err == nil {
+			return nil
+		}
+		select {
+		case <-done:
+			// Transcoding finished — check one final time.
+			if _, err := os.Stat(playlistPath); err == nil {
+				return nil
+			}
+			return fmt.Errorf("transcoding finished without creating a playlist")
+		default:
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for HLS playlist")
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// isSegmentCommitted reports whether segName has been fully written by ffmpeg.
+// ffmpeg appends a segment's name to playlist.m3u8 only after closing the
+// segment file, so its presence in the playlist guarantees the file is complete.
+// Once ffmpeg has exited (done closed), all remaining segments are also safe.
+func isSegmentCommitted(dir, segName string, done <-chan struct{}) bool {
+	select {
+	case <-done:
+		return true
+	default:
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "playlist.m3u8"))
+	if err != nil {
+		return false
+	}
+	// Split by "\n" and strip "\r" per line, consistent with rewritePlaylist.
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.TrimRight(line, "\r") == segName {
+			return true
+		}
+	}
+	return false
+}
+
+// waitForSegment polls until segName is committed or the deadline is exceeded.
+func waitForSegment(dir, segName string, done <-chan struct{}, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+	for {
+		if isSegmentCommitted(dir, segName, done) {
+			return nil
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out waiting for segment %s", segName)
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+}
+
+// rewritePlaylist replaces bare segment filenames in an m3u8 with authenticated
+// /api/hls/segment URIs so every segment download goes through the handler.
+func rewritePlaylist(data []byte, sessionKey string) string {
+	lines := strings.Split(string(data), "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimRight(line, "\r")
+		if validSegName.MatchString(trimmed) {
+			lines[i] = "/api/hls/segment?session=" + sessionKey + "&name=" + trimmed
+		}
+	}
+	return strings.Join(lines, "\n")
+}
+
+// handleHLSPlaylist starts background transcoding and returns the m3u8 playlist
+// as soon as the first segment is ready — without waiting for the full transcode.
+// Repeated requests hit the session cache and return instantly.
 func (h *Handler) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET required")
@@ -173,7 +262,6 @@ func (h *Handler) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := hlsSessionKey(realPath, info.ModTime())
-
 	startHLSCleanup()
 
 	hlsMu.Lock()
@@ -181,61 +269,44 @@ func (h *Handler) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 	if !exists {
 		sess = &hlsSession{
 			dir:      filepath.Join(hlsTempDir, key),
-			ready:    make(chan struct{}),
+			done:     make(chan struct{}),
 			lastUsed: time.Now(),
 		}
 		hlsSessions[key] = sess
-		go func() {
-			defer func() {
-				if p := recover(); p != nil {
-					sess.err = fmt.Errorf("transcoding panic for %q: %v", realPath, p)
-				}
-				close(sess.ready)
-			}()
-			sess.err = transcodeHLS(realPath, sess.dir)
-		}()
+		startTranscoding(sess, realPath)
 	}
 	sess.mu.Lock()
 	sess.lastUsed = time.Now()
 	sess.mu.Unlock()
 	hlsMu.Unlock()
 
-	// Wait for transcoding to finish (or time out).
-	select {
-	case <-sess.ready:
-	case <-time.After(hlsReadyTimeout):
-		writeError(w, http.StatusGatewayTimeout, "HLS transcoding timed out")
+	// Wait only until the playlist file appears on disk (non-blocking transcoding).
+	// For H.264 copy this typically takes < 1 s; for re-encode a few seconds.
+	if err := waitForPlaylist(sess.dir, sess.done, hlsPlaylistTimeout); err != nil {
+		sess.mu.Lock()
+		tErr := sess.err
+		sess.mu.Unlock()
+		if tErr != nil {
+			writeError(w, http.StatusInternalServerError, "HLS transcoding failed: "+tErr.Error())
+		} else {
+			writeError(w, http.StatusGatewayTimeout, err.Error())
+		}
 		return
 	}
 
-	if sess.err != nil {
-		writeError(w, http.StatusInternalServerError, "HLS transcoding failed: "+sess.err.Error())
-		return
-	}
-
-	// Read the generated playlist and rewrite segment URIs so they go through
-	// our authenticated /api/hls/segment endpoint.
-	playlistPath := filepath.Join(sess.dir, "playlist.m3u8")
-	data, err := os.ReadFile(playlistPath)
+	data, err := os.ReadFile(filepath.Join(sess.dir, "playlist.m3u8"))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "failed to read playlist: "+err.Error())
 		return
 	}
 
-	lines := strings.Split(string(data), "\n")
-	for i, line := range lines {
-		if validSegName.MatchString(strings.TrimSpace(line)) {
-			lines[i] = "/api/hls/segment?session=" + key + "&name=" + strings.TrimSpace(line)
-		}
-	}
-	playlist := strings.Join(lines, "\n")
-
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
 	w.Header().Set("Cache-Control", "no-cache")
-	fmt.Fprint(w, playlist)
+	fmt.Fprint(w, rewritePlaylist(data, key))
 }
 
-// handleHLSSegment serves a single HLS transport-stream segment file.
+// handleHLSSegment waits until the requested segment has been fully written
+// by ffmpeg, then streams it to the client.
 func (h *Handler) handleHLSSegment(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		writeError(w, http.StatusMethodNotAllowed, "GET required")
@@ -269,21 +340,33 @@ func (h *Handler) handleHLSSegment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Wait for transcoding to be ready.
-	select {
-	case <-sess.ready:
-	case <-time.After(hlsReadyTimeout):
-		writeError(w, http.StatusGatewayTimeout, "HLS transcoding timed out")
-		return
-	}
-
-	if sess.err != nil {
-		writeError(w, http.StatusInternalServerError, "transcoding failed")
+	// Wait until this specific segment has been committed to disk by ffmpeg.
+	if err := waitForSegment(sess.dir, segName, sess.done, hlsSegmentTimeout); err != nil {
+		sess.mu.Lock()
+		tErr := sess.err
+		sess.mu.Unlock()
+		if tErr != nil {
+			writeError(w, http.StatusInternalServerError, "transcoding failed")
+		} else {
+			writeError(w, http.StatusGatewayTimeout, "timed out waiting for segment")
+		}
 		return
 	}
 
 	segPath := filepath.Join(sess.dir, segName)
+	f, err := os.Open(segPath)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "segment not found")
+		return
+	}
+	defer f.Close()
+	stat, err := f.Stat()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "segment stat failed")
+		return
+	}
+	// Use ServeContent (not ServeFile) so our Content-Type is not overridden.
 	w.Header().Set("Content-Type", "video/mp2t")
-	http.ServeFile(w, r, segPath)
+	http.ServeContent(w, r, segName, stat.ModTime(), f)
 }
 
