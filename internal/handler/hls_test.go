@@ -35,8 +35,8 @@ func TestHandleHLSSegmentInvalidSession(t *testing.T) {
 
 func TestHandleHLSSegmentInvalidName(t *testing.T) {
 	h, _ := setupHandler(t)
-	// Valid hex session ID but invalid segment name.
-	rr := doRequest(t, h, http.MethodGet, "/api/hls/segment?session=aabbccddeeff00112233445566778899&name=../../etc/passwd", nil)
+	// Valid 64-char hex session ID but invalid segment name.
+	rr := doRequest(t, h, http.MethodGet, "/api/hls/segment?session=aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899&name=../../etc/passwd", nil)
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", rr.Code, rr.Body.String())
 	}
@@ -44,8 +44,8 @@ func TestHandleHLSSegmentInvalidName(t *testing.T) {
 
 func TestHandleHLSSegmentSessionNotFound(t *testing.T) {
 	h, _ := setupHandler(t)
-	// Valid session ID format but session does not exist.
-	rr := doRequest(t, h, http.MethodGet, "/api/hls/segment?session=aabbccddeeff00112233445566778899&name=seg000.ts", nil)
+	// Valid 64-char hex session ID format but session does not exist.
+	rr := doRequest(t, h, http.MethodGet, "/api/hls/segment?session=aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899&name=seg000.ts", nil)
 	if rr.Code != http.StatusNotFound {
 		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
 	}

@@ -1,8 +1,9 @@
 package handler
 
 import (
-	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -14,11 +15,14 @@ import (
 )
 
 const (
-	hlsTempBase      = "/tmp/filex-hls"
-	hlsSegmentLen    = 10            // seconds per HLS segment
-	hlsSessionTTL    = 2 * time.Hour // how long to keep cached sessions
-	hlsReadyTimeout  = 5 * time.Minute
+	hlsSegmentLen   = 10            // seconds per HLS segment
+	hlsSessionTTL   = 2 * time.Hour // how long to keep cached sessions
+	hlsReadyTimeout = 5 * time.Minute
 )
+
+// hlsTempDir returns the base directory for HLS temp files.
+// Using os.TempDir() instead of a hardcoded path works in all environments.
+var hlsTempDir = filepath.Join(os.TempDir(), "filex-hls")
 
 // hlsSession tracks a single HLS transcoding session.
 type hlsSession struct {
@@ -38,12 +42,13 @@ var (
 // validSegName matches safe segment file names produced by ffmpeg (e.g. "seg000.ts").
 var validSegName = regexp.MustCompile(`^seg\d{3,}\.ts$`)
 
-// validSessionID matches a 32-character lowercase hex MD5 string.
-var validSessionID = regexp.MustCompile(`^[0-9a-f]{32}$`)
+// validSessionID matches a 64-character lowercase hex SHA-256 string.
+var validSessionID = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
 // hlsSessionKey produces a stable cache key from the real file path + mtime.
+// SHA-256 is used to minimise collision probability in large deployments.
 func hlsSessionKey(realPath string, mtime time.Time) string {
-	h := md5.New()
+	h := sha256.New()
 	fmt.Fprintf(h, "%s|%d", realPath, mtime.UnixNano())
 	return fmt.Sprintf("%x", h.Sum(nil))
 }
@@ -60,7 +65,9 @@ func startHLSCleanup() {
 					lu := s.lastUsed
 					s.mu.Unlock()
 					if time.Since(lu) > hlsSessionTTL {
-						_ = os.RemoveAll(s.dir)
+						if err := os.RemoveAll(s.dir); err != nil {
+							log.Printf("hls: cleanup of %s failed: %v", s.dir, err)
+						}
 						delete(hlsSessions, k)
 					}
 				}
@@ -74,7 +81,7 @@ func startHLSCleanup() {
 // The output playlist is dir/playlist.m3u8 and segments are dir/segNNN.ts.
 func transcodeHLS(realPath, dir string) error {
 	if err := os.MkdirAll(dir, 0700); err != nil {
-		return err
+		return fmt.Errorf("create HLS dir: %w", err)
 	}
 	playlist := filepath.Join(dir, "playlist.m3u8")
 	segPattern := filepath.Join(dir, "seg%03d.ts")
@@ -89,7 +96,10 @@ func transcodeHLS(realPath, dir string) error {
 		"-y",
 		playlist,
 	)
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("ffmpeg transcoding of %q: %w", realPath, err)
+	}
+	return nil
 }
 
 // handleHLSPlaylist transcodes the requested video to HLS and returns the m3u8 playlist.
@@ -139,13 +149,18 @@ func (h *Handler) handleHLSPlaylist(w http.ResponseWriter, r *http.Request) {
 	sess, exists := hlsSessions[key]
 	if !exists {
 		sess = &hlsSession{
-			dir:      filepath.Join(hlsTempBase, key),
+			dir:      filepath.Join(hlsTempDir, key),
 			ready:    make(chan struct{}),
 			lastUsed: time.Now(),
 		}
 		hlsSessions[key] = sess
 		go func() {
-			defer close(sess.ready)
+			defer func() {
+				if p := recover(); p != nil {
+					sess.err = fmt.Errorf("transcoding panic: %v", p)
+				}
+				close(sess.ready)
+			}()
 			sess.err = transcodeHLS(realPath, sess.dir)
 		}()
 	}
@@ -240,3 +255,4 @@ func (h *Handler) handleHLSSegment(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "video/mp2t")
 	http.ServeFile(w, r, segPath)
 }
+
