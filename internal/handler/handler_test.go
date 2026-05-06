@@ -352,3 +352,49 @@ func TestHandleDelete_Bulk(t *testing.T) {
 		}
 	}
 }
+
+func TestHandleStream_ServesFileInline(t *testing.T) {
+h, dir := setupHandler(t)
+content := []byte("video data")
+os.WriteFile(filepath.Join(dir, "sample.mp4"), content, 0o644)
+
+rr := doRequest(t, h, http.MethodGet, "/api/stream?path=/sample.mp4", nil)
+if rr.Code != http.StatusOK {
+t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+}
+// Must NOT force a download attachment.
+cd := rr.Header().Get("Content-Disposition")
+if strings.Contains(cd, "attachment") {
+t.Errorf("Content-Disposition = %q, must not contain 'attachment' for inline streaming", cd)
+}
+// Body must contain the full file content.
+if got := rr.Body.Bytes(); string(got) != string(content) {
+t.Errorf("body = %q, want %q", got, content)
+}
+}
+
+func TestHandleStream_MissingPath(t *testing.T) {
+h, _ := setupHandler(t)
+rr := doRequest(t, h, http.MethodGet, "/api/stream", nil)
+if rr.Code != http.StatusBadRequest {
+t.Fatalf("status = %d, want 400", rr.Code)
+}
+}
+
+func TestHandleStream_RangeRequest(t *testing.T) {
+h, dir := setupHandler(t)
+content := []byte("abcdefghij") // 10 bytes
+os.WriteFile(filepath.Join(dir, "audio.mp3"), content, 0o644)
+
+req := httptest.NewRequest(http.MethodGet, "/api/stream?path=/audio.mp3", nil)
+req.Header.Set("Range", "bytes=2-5")
+rr := httptest.NewRecorder()
+h.ServeHTTP(rr, req)
+
+if rr.Code != http.StatusPartialContent {
+t.Fatalf("status = %d, want 206 for range request", rr.Code)
+}
+if got := rr.Body.String(); got != "cdef" {
+t.Errorf("range body = %q, want %q", got, "cdef")
+}
+}
