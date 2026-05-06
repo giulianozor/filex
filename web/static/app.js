@@ -912,7 +912,7 @@ async function openPreview(entry) {
     vid.autoplay = false;
     vid.style.maxWidth = '100%';
     const src = document.createElement('source');
-    src.src = '/api/download?path=' + encodeURIComponent(entry.path);
+    src.src = '/api/stream?path=' + encodeURIComponent(entry.path);
     vid.appendChild(src);
     container.appendChild(vid);
     openModal('modal-preview');
@@ -921,7 +921,7 @@ async function openPreview(entry) {
     aud.controls = true;
     aud.style.width = '100%';
     const src = document.createElement('source');
-    src.src = '/api/download?path=' + encodeURIComponent(entry.path);
+    src.src = '/api/stream?path=' + encodeURIComponent(entry.path);
     aud.appendChild(src);
     container.appendChild(aud);
     openModal('modal-preview');

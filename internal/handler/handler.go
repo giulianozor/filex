@@ -98,6 +98,7 @@ h.mux.HandleFunc("/api/version", h.handleVersion)
 h.mux.HandleFunc("/api/me", h.authMiddleware(h.handleMe))
 h.mux.HandleFunc("/api/list", h.authMiddleware(h.handleList))
 h.mux.HandleFunc("/api/download", h.authMiddleware(h.handleDownload))
+h.mux.HandleFunc("/api/stream", h.authMiddleware(h.handleStream))
 h.mux.HandleFunc("/api/upload", h.authMiddleware(h.handleUpload))
 h.mux.HandleFunc("/api/mkdir", h.authMiddleware(h.handleMkdir))
 h.mux.HandleFunc("/api/rename", h.authMiddleware(h.handleRename))
@@ -434,6 +435,30 @@ return
 }
 w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, filepath.Base(stat.Name())))
 w.Header().Set("Content-Length", strconv.FormatInt(stat.Size(), 10))
+http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
+}
+
+// handleStream serves a file for inline browser playback (e.g. video/audio preview).
+// Unlike handleDownload it does not set Content-Disposition: attachment, so the
+// browser can render the file directly.  http.ServeContent handles range requests,
+// ETags, and Last-Modified automatically, enabling efficient seeking in large media files.
+func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request) {
+path := r.URL.Query().Get("path")
+if path == "" {
+writeError(w, http.StatusBadRequest, "path required")
+return
+}
+f, err := h.fsForRequest(r).OpenForDownload(path)
+if err != nil {
+writeError(w, http.StatusNotFound, err.Error())
+return
+}
+defer f.Close()
+stat, err := f.Stat()
+if err != nil {
+writeError(w, http.StatusInternalServerError, err.Error())
+return
+}
 http.ServeContent(w, r, stat.Name(), stat.ModTime(), f)
 }
 
