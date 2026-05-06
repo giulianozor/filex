@@ -49,6 +49,12 @@ a:hover { color: var(--accent-hover); }
   overflow-y: auto;
   flex-shrink: 0;
   overflow: hidden;
+  transition: width 0.25s ease, min-width 0.25s ease;
+}
+
+#sidebar.collapsed {
+  width: 0;
+  min-width: 0;
 }
 
 .sidebar-logo {
@@ -78,17 +84,17 @@ a:hover { color: var(--accent-hover); }
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 16px;
+  padding: 10px 16px;
   cursor: pointer;
   border-radius: 0;
   color: var(--text);
   transition: background 0.15s;
   overflow: hidden;
-  font-size: 15px;
+  font-size: 17px;
 }
 .fav-item:hover { background: var(--card); }
 .fav-item.active { background: var(--card); color: var(--accent); }
-.fav-item svg { flex-shrink: 0; color: var(--text-dim); }
+.fav-item svg { flex-shrink: 0; color: var(--text-dim); width: 22px; height: 22px; }
 .fav-item.active svg { color: var(--accent); }
 
 .fav-name {
@@ -230,7 +236,7 @@ a:hover { color: var(--accent-hover); }
 }
 
 #menu-toggle {
-  display: none;
+  display: flex;
   background: none;
   border: none;
   color: var(--text);
@@ -795,7 +801,6 @@ td:first-child { width: 36px; padding-right: 4px; }
   }
   #sidebar.open { left: 0; box-shadow: 4px 0 20px rgba(0,0,0,0.5); }
 
-  #menu-toggle { display: flex; }
   #sidebar-overlay {
     display: none;
     position: fixed;

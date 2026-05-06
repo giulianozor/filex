@@ -961,8 +961,16 @@ async function loadDiskInfo() {
 // ─── Favourites ───────────────────────────────────────────────────────────────
 async function loadFavourites() {
   try {
-    const favs = await apiGet('/api/favourites');
-    state.favourites = favs || [];
+    const raw = await apiGet('/api/favourites');
+    // Sort alphabetically; keep the home entry (path === '/') always first
+    const favs = (raw || []).slice().sort((a, b) => {
+      const aIsHome = a.path === '/';
+      const bIsHome = b.path === '/';
+      if (aIsHome && !bIsHome) return -1;
+      if (!aIsHome && bIsHome) return 1;
+      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+    });
+    state.favourites = favs;
     const list = document.getElementById('fav-list');
     list.innerHTML = '';
     state.favourites.forEach(fav => {
@@ -1267,15 +1275,27 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Mobile sidebar toggle
+  // Sidebar toggle (desktop: collapse/expand; mobile: slide-in overlay)
+  const SIDEBAR_KEY = 'filex_sidebar_collapsed';
   document.getElementById('menu-toggle').addEventListener('click', () => {
-    document.getElementById('sidebar').classList.toggle('open');
-    document.getElementById('sidebar-overlay').classList.toggle('visible');
+    if (window.innerWidth <= 700) {
+      document.getElementById('sidebar').classList.toggle('open');
+      document.getElementById('sidebar-overlay').classList.toggle('visible');
+    } else {
+      const sidebar = document.getElementById('sidebar');
+      const isNowCollapsed = sidebar.classList.toggle('collapsed');
+      localStorage.setItem(SIDEBAR_KEY, isNowCollapsed ? '1' : '0');
+    }
   });
   document.getElementById('sidebar-overlay').addEventListener('click', () => {
     document.getElementById('sidebar').classList.remove('open');
     document.getElementById('sidebar-overlay').classList.remove('visible');
   });
+
+  // Restore sidebar collapsed state on desktop
+  if (window.innerWidth > 700 && localStorage.getItem(SIDEBAR_KEY) === '1') {
+    document.getElementById('sidebar').classList.add('collapsed');
+  }
 
   // Browser back/forward
   window.addEventListener('popstate', e => {
