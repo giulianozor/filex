@@ -1085,6 +1085,10 @@ const FONT_SIZE_MIN = 11;
 const FONT_SIZE_MAX = 20;
 const FONT_SIZE_DEFAULT = 15;
 
+// Breakpoint (px) below which the mobile sidebar overlay is used instead of
+// the desktop collapse behaviour.  Must match the CSS @media threshold.
+const MOBILE_BREAKPOINT = 700;
+
 function loadFontSize() {
   const saved = parseInt(localStorage.getItem(FONT_SIZE_KEY), 10);
   const size = (saved >= FONT_SIZE_MIN && saved <= FONT_SIZE_MAX) ? saved : FONT_SIZE_DEFAULT;
@@ -1278,7 +1282,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Sidebar toggle (desktop: collapse/expand; mobile: slide-in overlay)
   const SIDEBAR_KEY = 'filex_sidebar_collapsed';
   document.getElementById('menu-toggle').addEventListener('click', () => {
-    if (window.innerWidth <= 700) {
+    if (window.innerWidth <= MOBILE_BREAKPOINT) {
       document.getElementById('sidebar').classList.toggle('open');
       document.getElementById('sidebar-overlay').classList.toggle('visible');
     } else {
@@ -1293,9 +1297,29 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Restore sidebar collapsed state on desktop
-  if (window.innerWidth > 700 && localStorage.getItem(SIDEBAR_KEY) === '1') {
+  if (window.innerWidth > MOBILE_BREAKPOINT && localStorage.getItem(SIDEBAR_KEY) === '1') {
     document.getElementById('sidebar').classList.add('collapsed');
   }
+
+  // When the viewport crosses the mobile/desktop breakpoint, sync sidebar state
+  let lastIsMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+  window.addEventListener('resize', () => {
+    const isMobile = window.innerWidth <= MOBILE_BREAKPOINT;
+    if (isMobile === lastIsMobile) return;
+    lastIsMobile = isMobile;
+    const sidebar = document.getElementById('sidebar');
+    if (isMobile) {
+      // Entering mobile: clear desktop collapsed state so the overlay works cleanly
+      sidebar.classList.remove('collapsed');
+    } else {
+      // Entering desktop: restore saved state and ensure overlay is closed
+      sidebar.classList.remove('open');
+      document.getElementById('sidebar-overlay').classList.remove('visible');
+      if (localStorage.getItem(SIDEBAR_KEY) === '1') {
+        sidebar.classList.add('collapsed');
+      }
+    }
+  });
 
   // Browser back/forward
   window.addEventListener('popstate', e => {
