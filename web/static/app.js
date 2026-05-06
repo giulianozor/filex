@@ -963,7 +963,7 @@ async function loadFavourites() {
   try {
     const raw = await apiGet('/api/favourites');
     // Sort alphabetically; keep the home entry (path === '/') always first
-    const favs = (raw || []).slice().sort((a, b) => {
+    const favs = (raw || []).sort((a, b) => {
       const aIsHome = a.path === '/';
       const bIsHome = b.path === '/';
       if (aIsHome && !bIsHome) return -1;
