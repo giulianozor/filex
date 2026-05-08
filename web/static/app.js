@@ -511,6 +511,7 @@ function hideOpProgress() {
 }
 
 function formatTransferProgress(done, total, currentLabel) {
+  if (!total || total <= 0) return '0%';
   const pct = Math.round((done / total) * 100);
   if (total > 1) return `${done} / ${total} items (${pct}%)`;
   return `${currentLabel} (${pct}%)`;
@@ -711,6 +712,7 @@ async function doMove() {
   const dst = document.getElementById('move-dst').value.trim();
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.moveSrc) ? state.moveSrc : [state.moveSrc];
+  if (srcs.length === 0) { toast('No items to move', 'error'); return; }
   const bar = document.getElementById('upload-progress-bar');
   const btn = document.getElementById('move-confirm');
   bar.classList.add('indeterminate');
@@ -798,6 +800,7 @@ async function doCopy() {
   const dst = document.getElementById('copy-dst').value.trim();
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.copySrc) ? state.copySrc : [state.copySrc];
+  if (srcs.length === 0) { toast('No items to copy', 'error'); return; }
   const bar = document.getElementById('upload-progress-bar');
   const btn = document.getElementById('copy-confirm');
   bar.classList.add('indeterminate');
