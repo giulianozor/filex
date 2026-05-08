@@ -460,16 +460,20 @@ function startInlineRename(entry, nameSpan) {
 // ─── Delete ───────────────────────────────────────────────────────────────────
 async function deleteFiles(paths) {
   if (!paths || paths.length === 0) return;
-  const names = paths.map(basename).join(', ');
-  if (!confirm(`Delete ${names}?\nThis cannot be undone.`)) return;
+  const names = paths.map(basename);
+  const namesList = names.map(name => `• ${name}`).join('\n');
+  const isSingle = names.length === 1;
+  if (!confirm(`Delete ${isSingle ? 'this item' : 'these items'}?\n${namesList}\n\nThis cannot be undone.`)) return false;
   try {
     await apiPost('/api/delete', { paths });
-    toast(paths.length === 1 ? `Deleted ${names}` : `Deleted ${paths.length} items`, 'success');
+    toast(paths.length === 1 ? `Deleted ${names[0]}` : `Deleted ${paths.length} items`, 'success');
     paths.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
     loadDirectory(state.currentPath);
+    return true;
   } catch (e) {
     toast('Delete failed: ' + e.message, 'error');
+    return false;
   }
 }
 
@@ -504,6 +508,12 @@ function hideOpProgress() {
   const el = document.getElementById('op-progress');
   if (el) el.style.display = 'none';
   state.opAbort = null;
+}
+
+function formatTransferProgress(done, total, currentLabel) {
+  const pct = Math.round((done / total) * 100);
+  if (total > 1) return `${done} / ${total} items (${pct}%)`;
+  return `${currentLabel} (${pct}%)`;
 }
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
@@ -708,16 +718,18 @@ async function doMove() {
 
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
-  const sub0 = srcs.length > 1 ? `0 / ${srcs.length} items` : basename(srcs[0]);
-  showOpProgress('Moving…', null, sub0);
+  showOpProgress('Moving…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
   try {
     for (const src of srcs) {
       await apiPost('/api/move', { src, dst }, { signal: controller.signal });
       done++;
-      showOpProgress('Moving…', (done / srcs.length) * 100,
-        srcs.length > 1 ? `${done} / ${srcs.length} items` : basename(src));
+      showOpProgress(
+        'Moving…',
+        (done / srcs.length) * 100,
+        formatTransferProgress(done, srcs.length, basename(src))
+      );
     }
     toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
@@ -793,16 +805,18 @@ async function doCopy() {
 
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
-  const sub0 = srcs.length > 1 ? `0 / ${srcs.length} items` : basename(srcs[0]);
-  showOpProgress('Copying…', null, sub0);
+  showOpProgress('Copying…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
   try {
     for (const src of srcs) {
       await apiPost('/api/copy', { src, dst }, { signal: controller.signal });
       done++;
-      showOpProgress('Copying…', (done / srcs.length) * 100,
-        srcs.length > 1 ? `${done} / ${srcs.length} items` : basename(src));
+      showOpProgress(
+        'Copying…',
+        (done / srcs.length) * 100,
+        formatTransferProgress(done, srcs.length, basename(src))
+      );
     }
     toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
@@ -873,6 +887,24 @@ function navigatePreview(dir) {
   openPreview(state.previewList[newIdx]);
 }
 
+async function deleteCurrentPreview() {
+  const current = state.previewList[state.previewIndex];
+  if (!current) return;
+
+  const deleted = await deleteFiles([current.path]);
+  if (!deleted) return;
+
+  state.entries = state.entries.filter(e => e.path !== current.path);
+  state.previewList = buildPreviewList();
+  if (state.previewList.length === 0) {
+    closeModal('modal-preview');
+    return;
+  }
+
+  const nextIdx = Math.min(state.previewIndex, state.previewList.length - 1);
+  openPreview(state.previewList[nextIdx]);
+}
+
 async function openPreview(entry) {
   const list = buildPreviewList();
   const idx = list.findIndex(e => e.path === entry.path);
@@ -892,7 +924,7 @@ async function openPreview(entry) {
 
   moveBtn.onclick = () => { closeModal('modal-preview'); openMoveModal(entry.path); };
   copyBtn.onclick = () => { closeModal('modal-preview'); openCopyModal(entry.path); };
-  deleteBtn.onclick = () => { closeModal('modal-preview'); deleteFiles([entry.path]); };
+  deleteBtn.onclick = deleteCurrentPreview;
 
   updatePreviewNav();
 
