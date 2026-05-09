@@ -877,11 +877,12 @@ function buildPreviewList() {
 function updatePreviewNav() {
   const prevBtn = document.getElementById('preview-prev');
   const nextBtn = document.getElementById('preview-next');
-  const hasMultiple = state.previewList.length > 1;
-  prevBtn.style.display = hasMultiple ? '' : 'none';
-  nextBtn.style.display = hasMultiple ? '' : 'none';
-  prevBtn.disabled = state.previewIndex <= 0;
-  nextBtn.disabled = state.previewIndex >= state.previewList.length - 1;
+  const hasPrev = state.previewIndex > 0;
+  const hasNext = state.previewIndex >= 0 && state.previewIndex < state.previewList.length - 1;
+  prevBtn.style.display = hasPrev ? '' : 'none';
+  nextBtn.style.display = hasNext ? '' : 'none';
+  prevBtn.disabled = !hasPrev;
+  nextBtn.disabled = !hasNext;
 }
 
 function navigatePreview(dir) {
