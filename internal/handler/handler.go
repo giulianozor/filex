@@ -636,6 +636,7 @@ return
 var req struct {
 Src string `json:"src"`
 Dst string `json:"dst"`
+OnConflict string `json:"on_conflict"`
 }
 if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 writeError(w, http.StatusBadRequest, err.Error())
@@ -645,7 +646,12 @@ if req.Src == "" || req.Dst == "" {
 writeError(w, http.StatusBadRequest, "src and dst required")
 return
 }
-if err := h.fsForRequest(r).Move(req.Src, req.Dst); err != nil {
+onConflict, err := fslib.ParseConflictStrategy(req.OnConflict)
+if err != nil {
+writeError(w, http.StatusBadRequest, err.Error())
+return
+}
+if err := h.fsForRequest(r).MoveWithConflict(req.Src, req.Dst, onConflict); err != nil {
 writeError(w, http.StatusBadRequest, err.Error())
 return
 }
@@ -660,6 +666,7 @@ return
 var req struct {
 Src string `json:"src"`
 Dst string `json:"dst"`
+OnConflict string `json:"on_conflict"`
 }
 if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 writeError(w, http.StatusBadRequest, err.Error())
@@ -669,7 +676,12 @@ if req.Src == "" || req.Dst == "" {
 writeError(w, http.StatusBadRequest, "src and dst required")
 return
 }
-if err := h.fsForRequest(r).Copy(req.Src, req.Dst); err != nil {
+onConflict, err := fslib.ParseConflictStrategy(req.OnConflict)
+if err != nil {
+writeError(w, http.StatusBadRequest, err.Error())
+return
+}
+if err := h.fsForRequest(r).CopyWithConflict(req.Src, req.Dst, onConflict); err != nil {
 writeError(w, http.StatusBadRequest, err.Error())
 return
 }

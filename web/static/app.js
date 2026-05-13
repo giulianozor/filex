@@ -66,6 +66,42 @@ function basename(p) {
   return p.replace(/\/$/, '').split('/').pop() || '/';
 }
 
+function isDestinationConflictError(err) {
+  return typeof err?.message === 'string' && err.message.toLowerCase().includes('destination already exists');
+}
+
+function makeAbortError(msg = 'Operation cancelled') {
+  const e = new Error(msg);
+  e.name = 'AbortError';
+  return e;
+}
+
+function askConflictResolution(actionLabel, src, dst) {
+  const item = basename(src);
+  while (true) {
+    const answer = window.prompt(
+      `${actionLabel} conflict: "${item}" already exists in "${dst}".\nChoose: [c]ancel, [o]verwrite, [r]ename new file.`,
+      'o'
+    );
+    if (answer === null) return { action: 'cancel', applyToAll: false };
+    const choice = answer.trim().toLowerCase();
+    if (choice === 'c' || choice === 'cancel') return { action: 'cancel', applyToAll: false };
+    if (choice === 'o' || choice === 'overwrite') {
+      return {
+        action: 'overwrite',
+        applyToAll: window.confirm(`Apply "overwrite" to subsequent ${actionLabel.toLowerCase()} conflicts?`),
+      };
+    }
+    if (choice === 'r' || choice === 'rename') {
+      return {
+        action: 'rename',
+        applyToAll: window.confirm(`Apply "rename" to subsequent ${actionLabel.toLowerCase()} conflicts?`),
+      };
+    }
+    window.alert('Invalid choice. Enter c, o, or r.');
+  }
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
   const c = document.getElementById('toast-container');
@@ -729,9 +765,23 @@ async function doMove() {
   showOpProgress('Moving…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
+  let conflictChoice = null;
   try {
     for (const src of srcs) {
-      await apiPost('/api/move', { src, dst }, { signal: controller.signal });
+      let onConflict = conflictChoice || 'error';
+      while (true) {
+        try {
+          await apiPost('/api/move', { src, dst, on_conflict: onConflict }, { signal: controller.signal });
+          break;
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          if (!isDestinationConflictError(e) || onConflict !== 'error') throw e;
+          const resolution = askConflictResolution('Move', src, dst);
+          if (resolution.action === 'cancel') throw makeAbortError('Move cancelled');
+          onConflict = resolution.action;
+          if (resolution.applyToAll) conflictChoice = resolution.action;
+        }
+      }
       done++;
       showOpProgress(
         'Moving…',
@@ -821,9 +871,23 @@ async function doCopy() {
   showOpProgress('Copying…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
+  let conflictChoice = null;
   try {
     for (const src of srcs) {
-      await apiPost('/api/copy', { src, dst }, { signal: controller.signal });
+      let onConflict = conflictChoice || 'error';
+      while (true) {
+        try {
+          await apiPost('/api/copy', { src, dst, on_conflict: onConflict }, { signal: controller.signal });
+          break;
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          if (!isDestinationConflictError(e) || onConflict !== 'error') throw e;
+          const resolution = askConflictResolution('Copy', src, dst);
+          if (resolution.action === 'cancel') throw makeAbortError('Copy cancelled');
+          onConflict = resolution.action;
+          if (resolution.applyToAll) conflictChoice = resolution.action;
+        }
+      }
       done++;
       showOpProgress(
         'Copying…',
