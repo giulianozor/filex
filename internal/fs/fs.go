@@ -14,6 +14,27 @@ import (
 )
 
 var ErrOutsideBase = errors.New("path is outside the allowed base directory")
+var ErrDestinationExists = errors.New("destination already exists")
+
+type ConflictStrategy string
+
+const (
+ConflictError ConflictStrategy = "error"
+ConflictOverwrite ConflictStrategy = "overwrite"
+ConflictRename ConflictStrategy = "rename"
+)
+
+func ParseConflictStrategy(v string) (ConflictStrategy, error) {
+normalized := ConflictStrategy(strings.TrimSpace(strings.ToLower(v)))
+switch normalized {
+case "":
+return ConflictError, nil
+case ConflictError, ConflictOverwrite, ConflictRename:
+return normalized, nil
+default:
+return "", fmt.Errorf("invalid on_conflict value %q", v)
+}
+}
 
 type FileEntry struct {
 Name     string      `json:"name"`
@@ -241,6 +262,10 @@ return os.Rename(abs, validPath)
 // If src and dst are on different filesystems (EXDEV), it falls back to a
 // recursive copy followed by removal of the source.
 func (f *FS) Move(src, dst string) error {
+	return f.MoveWithConflict(src, dst, ConflictOverwrite)
+}
+
+func (f *FS) MoveWithConflict(src, dst string, onConflict ConflictStrategy) error {
 	return f.runAs(func() error {
 		absSrc, err := f.resolve(src)
 		if err != nil {
@@ -257,6 +282,10 @@ func (f *FS) Move(src, dst string) error {
 			if err != nil {
 				return err
 			}
+		}
+		absDst, err = f.resolveConflictDestination(absSrc, absDst, onConflict)
+		if err != nil {
+			return err
 		}
 		if err := os.Rename(absSrc, absDst); err != nil {
 			var errno syscall.Errno
@@ -450,6 +479,10 @@ UsedPct: usedPct,
 // Copy recursively copies src to dst within the base jail.
 // If dst is an existing directory, src is placed inside it.
 func (f *FS) Copy(src, dst string) error {
+	return f.CopyWithConflict(src, dst, ConflictOverwrite)
+}
+
+func (f *FS) CopyWithConflict(src, dst string, onConflict ConflictStrategy) error {
 	return f.runAs(func() error {
 		absSrc, err := f.resolve(src)
 		if err != nil {
@@ -467,8 +500,71 @@ func (f *FS) Copy(src, dst string) error {
 				return err
 			}
 		}
+		if absSrc == absDst {
+			return fmt.Errorf("source and destination are the same path")
+		}
+		absDst, err = f.resolveConflictDestination(absSrc, absDst, onConflict)
+		if err != nil {
+			return err
+		}
 		return f.copyAll(absSrc, absDst)
 	})
+}
+
+func (f *FS) resolveConflictDestination(absSrc, absDst string, onConflict ConflictStrategy) (string, error) {
+if absSrc == absDst {
+// Moving a path onto itself is a no-op (used by move operations only).
+return absDst, nil
+}
+_, err := os.Stat(absDst)
+if os.IsNotExist(err) {
+return absDst, nil
+}
+if err != nil {
+return "", err
+}
+switch onConflict {
+case ConflictError:
+return "", fmt.Errorf("%w: %s", ErrDestinationExists, f.toJailPath(absDst))
+case ConflictOverwrite:
+if err := os.RemoveAll(absDst); err != nil {
+return "", err
+}
+return absDst, nil
+case ConflictRename:
+return f.nextAvailablePath(absDst)
+default:
+return "", fmt.Errorf("invalid conflict strategy %q", onConflict)
+}
+}
+
+func (f *FS) nextAvailablePath(absPath string) (string, error) {
+dir := filepath.Dir(absPath)
+base := filepath.Base(absPath)
+ext := filepath.Ext(base)
+stem := strings.TrimSuffix(base, ext)
+const maxRenameAttempts = 1000
+for i := 1; i <= maxRenameAttempts; i++ {
+suffix := " (copy)"
+if i > 1 {
+suffix = fmt.Sprintf(" (copy %d)", i)
+}
+candidate := filepath.Join(dir, stem+suffix+ext)
+if _, err := os.Stat(candidate); os.IsNotExist(err) {
+return candidate, nil
+} else if err != nil {
+return "", err
+}
+}
+return "", fmt.Errorf("could not find an available destination name for %q after %d attempts", f.toJailPath(absPath), maxRenameAttempts)
+}
+
+func (f *FS) toJailPath(absPath string) string {
+rel, err := filepath.Rel(f.basePath, absPath)
+if err != nil || rel == "." {
+return "/"
+}
+return "/" + filepath.ToSlash(rel)
 }
 
 func (f *FS) copyAll(src, dst string) error {

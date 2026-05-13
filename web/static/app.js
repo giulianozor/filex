@@ -10,6 +10,10 @@ const state = {
   entries: [],
   moveSrc: null,
   copySrc: null,
+  moveInProgress: false,
+  copyInProgress: false,
+  moveModalClosedManually: false,
+  copyModalClosedManually: false,
   editorPath: null,
   favourites: [],
   opAbort: null,   // function to cancel the current running operation
@@ -62,6 +66,43 @@ function basename(p) {
   return p.replace(/\/$/, '').split('/').pop() || '/';
 }
 
+function isDestinationConflictError(err) {
+  if (err?.code === 'destination_exists') return true;
+  return typeof err?.message === 'string' && err.message.toLowerCase().includes('destination already exists');
+}
+
+function makeAbortError(msg = 'Operation cancelled') {
+  const e = new Error(msg);
+  e.name = 'AbortError';
+  return e;
+}
+
+function askConflictResolution(actionLabel, src, dst) {
+  const item = basename(src);
+  while (true) {
+    const answer = window.prompt(
+      `${actionLabel} conflict: "${item}" already exists in "${dst}".\nChoose: [c]ancel, [o]verwrite, [r]ename new file.`,
+      'c'
+    );
+    if (answer === null) return { action: 'cancel', applyToAll: false };
+    const choice = answer.trim().toLowerCase();
+    if (choice === 'c' || choice === 'cancel') return { action: 'cancel', applyToAll: false };
+    if (choice === 'o' || choice === 'overwrite') {
+      return {
+        action: 'overwrite',
+        applyToAll: window.confirm(`Apply "overwrite" to subsequent ${actionLabel.toLowerCase()} conflicts?`),
+      };
+    }
+    if (choice === 'r' || choice === 'rename') {
+      return {
+        action: 'rename',
+        applyToAll: window.confirm(`Apply "rename" to subsequent ${actionLabel.toLowerCase()} conflicts?`),
+      };
+    }
+    window.alert('Invalid choice. Enter c, o, or r.');
+  }
+}
+
 // ─── Toast ────────────────────────────────────────────────────────────────────
 function toast(msg, type = 'info') {
   const c = document.getElementById('toast-container');
@@ -90,7 +131,11 @@ async function apiPost(url, body, opts = {}) {
   });
   if (r.status === 401) { window.location.href = '/login'; return null; }
   const data = await r.json();
-  if (!r.ok) throw new Error(data.error || r.statusText);
+  if (!r.ok) {
+    const err = new Error(data.error || r.statusText);
+    if (data && typeof data.code === 'string') err.code = data.code;
+    throw err;
+  }
   return data;
 }
 
@@ -720,12 +765,28 @@ async function doMove() {
 
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
+  state.moveInProgress = true;
+  state.moveModalClosedManually = false;
   showOpProgress('Moving…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
+  let conflictChoice = null;
   try {
     for (const src of srcs) {
-      await apiPost('/api/move', { src, dst }, { signal: controller.signal });
+      let onConflict = conflictChoice || 'error';
+      while (true) {
+        try {
+          await apiPost('/api/move', { src, dst, on_conflict: onConflict }, { signal: controller.signal });
+          break;
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          if (!isDestinationConflictError(e) || onConflict !== 'error') throw e;
+          const resolution = askConflictResolution('Move', src, dst);
+          if (resolution.action === 'cancel') throw makeAbortError('Move cancelled');
+          onConflict = resolution.action;
+          if (resolution.applyToAll) conflictChoice = resolution.action;
+        }
+      }
       done++;
       showOpProgress(
         'Moving…',
@@ -736,8 +797,9 @@ async function doMove() {
     toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
-    closeModal('modal-move');
-    loadDirectory(state.currentPath);
+    const shouldNavigateToDestination = !state.moveModalClosedManually;
+    closeModal('modal-move', false);
+    loadDirectory(shouldNavigateToDestination ? dst : state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
       toast('Move cancelled', 'info');
@@ -745,6 +807,7 @@ async function doMove() {
       toast('Move failed: ' + e.message, 'error');
     }
   } finally {
+    state.moveInProgress = false;
     hideOpProgress();
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
@@ -808,12 +871,28 @@ async function doCopy() {
 
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
+  state.copyInProgress = true;
+  state.copyModalClosedManually = false;
   showOpProgress('Copying…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
+  let conflictChoice = null;
   try {
     for (const src of srcs) {
-      await apiPost('/api/copy', { src, dst }, { signal: controller.signal });
+      let onConflict = conflictChoice || 'error';
+      while (true) {
+        try {
+          await apiPost('/api/copy', { src, dst, on_conflict: onConflict }, { signal: controller.signal });
+          break;
+        } catch (e) {
+          if (e.name === 'AbortError') throw e;
+          if (!isDestinationConflictError(e) || onConflict !== 'error') throw e;
+          const resolution = askConflictResolution('Copy', src, dst);
+          if (resolution.action === 'cancel') throw makeAbortError('Copy cancelled');
+          onConflict = resolution.action;
+          if (resolution.applyToAll) conflictChoice = resolution.action;
+        }
+      }
       done++;
       showOpProgress(
         'Copying…',
@@ -824,8 +903,9 @@ async function doCopy() {
     toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
-    closeModal('modal-copy');
-    loadDirectory(state.currentPath);
+    const shouldNavigateToDestination = !state.copyModalClosedManually;
+    closeModal('modal-copy', false);
+    loadDirectory(shouldNavigateToDestination ? dst : state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
       toast('Copy cancelled', 'info');
@@ -833,6 +913,7 @@ async function doCopy() {
       toast('Copy failed: ' + e.message, 'error');
     }
   } finally {
+    state.copyInProgress = false;
     hideOpProgress();
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
@@ -1083,9 +1164,11 @@ function openModal(id) {
   if (el) { el.classList.add('open'); }
 }
 
-function closeModal(id) {
+function closeModal(id, manual = true) {
   const el = document.getElementById(id);
   if (el) {
+    if (manual && id === 'modal-move' && state.moveInProgress) state.moveModalClosedManually = true;
+    if (manual && id === 'modal-copy' && state.copyInProgress) state.copyModalClosedManually = true;
     el.classList.remove('open');
     // Stop any media playing inside the modal
     el.querySelectorAll('video, audio').forEach(m => { m.pause(); m.src = ''; });

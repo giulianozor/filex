@@ -170,6 +170,15 @@ func TestHandleMove(t *testing.T) {
 	}
 }
 
+func TestHandleMoveConflictInvalidOnConflict(t *testing.T) {
+	h, _ := setupHandler(t)
+	body := `{"src":"/a.txt","dst":"/b.txt","on_conflict":"invalid"}`
+	rr := doRequest(t, h, http.MethodPost, "/api/move", strings.NewReader(body))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+}
+
 func TestHandleReadWrite(t *testing.T) {
 	h, dir := setupHandler(t)
 
@@ -254,6 +263,58 @@ func TestHandleCopy(t *testing.T) {
 	// original must still exist
 	if _, err := os.Stat(filepath.Join(dir, "orig.txt")); err != nil {
 		t.Error("orig.txt should still exist after copy")
+	}
+}
+
+func TestHandleCopyConflictDefaultErrors(t *testing.T) {
+	h, dir := setupHandler(t)
+	if err := os.WriteFile(filepath.Join(dir, "orig.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "copy.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"src":"/orig.txt","dst":"/copy.txt"}`
+	rr := doRequest(t, h, http.MethodPost, "/api/copy", strings.NewReader(body))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "destination already exists") {
+		t.Fatalf("expected conflict message, got %s", rr.Body.String())
+	}
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode error payload: %v", err)
+	}
+	if payload["code"] != "destination_exists" {
+		t.Fatalf("code = %q, want destination_exists", payload["code"])
+	}
+}
+
+func TestHandleCopyConflictRename(t *testing.T) {
+	h, dir := setupHandler(t)
+	if err := os.WriteFile(filepath.Join(dir, "orig.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "copy.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	body := `{"src":"/orig.txt","dst":"/copy.txt","on_conflict":"rename"}`
+	rr := doRequest(t, h, http.MethodPost, "/api/copy", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "copy (copy).txt")); err != nil {
+		t.Fatalf("copy (copy).txt not found: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(dir, "copy (copy).txt"))
+	if err != nil {
+		t.Fatalf("read copy (copy).txt: %v", err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("copy (copy).txt content = %q, want %q", string(data), "new")
 	}
 }
 
@@ -366,7 +427,6 @@ func TestFavouritesPersistence(t *testing.T) {
 		}
 	}
 }
-
 
 func TestHandleConfig(t *testing.T) {
 	h, _ := setupHandler(t)

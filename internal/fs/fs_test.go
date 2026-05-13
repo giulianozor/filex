@@ -1,6 +1,7 @@
 package fs
 
 import (
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -167,6 +168,21 @@ func TestMove(t *testing.T) {
 	}
 }
 
+func TestMoveWithConflict_Error(t *testing.T) {
+	fsys, dir := setup(t)
+	if err := os.WriteFile(filepath.Join(dir, "src.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dst.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := fsys.MoveWithConflict("/src.txt", "/dst.txt", ConflictError)
+	if !errors.Is(err, ErrDestinationExists) {
+		t.Fatalf("expected ErrDestinationExists, got %v", err)
+	}
+}
+
 func TestReadWriteFile(t *testing.T) {
 	fsys, _ := setup(t)
 	content := []byte("hello, filex!")
@@ -228,6 +244,38 @@ func TestCopy_DirIntoExisting(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(dir, "dest", "src", "a.txt")); err != nil {
 		t.Errorf("dest/src/a.txt not found: %v", err)
+	}
+}
+
+func TestCopyWithConflict_Rename(t *testing.T) {
+	fsys, dir := setup(t)
+	if err := os.WriteFile(filepath.Join(dir, "src.txt"), []byte("new"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dst.txt"), []byte("old"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := fsys.CopyWithConflict("/src.txt", "/dst.txt", ConflictRename); err != nil {
+		t.Fatalf("CopyWithConflict rename: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "dst (copy).txt")); err != nil {
+		t.Fatalf("renamed destination missing: %v", err)
+	}
+	if data, err := os.ReadFile(filepath.Join(dir, "dst.txt")); err != nil {
+		t.Fatal(err)
+	} else if string(data) != "old" {
+		t.Fatalf("dst.txt content = %q, want old", string(data))
+	}
+}
+
+func TestCopyWithConflict_SamePath(t *testing.T) {
+	fsys, dir := setup(t)
+	if err := os.WriteFile(filepath.Join(dir, "src.txt"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.CopyWithConflict("/src.txt", "/src.txt", ConflictError); err == nil {
+		t.Fatal("expected same-path copy to fail")
 	}
 }
 
