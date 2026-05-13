@@ -745,9 +745,14 @@ function folderBrowserUp(mode) {
 
 async function ensureBatchDestinationDirectory(dst) {
   try {
-    await apiGet('/api/list?path=' + encodeURIComponent(dst));
-  } catch (_) {
     await apiPost('/api/mkdir', { path: dst });
+  } catch (mkdirErr) {
+    // If mkdir failed because the destination already exists, ensure it is a directory.
+    try {
+      await apiGet('/api/list?path=' + encodeURIComponent(dst));
+    } catch (_) {
+      throw mkdirErr;
+    }
   }
 }
 
