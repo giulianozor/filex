@@ -269,6 +269,16 @@ func TestCopyWithConflict_Rename(t *testing.T) {
 	}
 }
 
+func TestCopyWithConflict_SamePath(t *testing.T) {
+	fsys, dir := setup(t)
+	if err := os.WriteFile(filepath.Join(dir, "src.txt"), []byte("same"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := fsys.CopyWithConflict("/src.txt", "/src.txt", ConflictError); err == nil {
+		t.Fatal("expected same-path copy to fail")
+	}
+}
+
 func TestZipPaths_File(t *testing.T) {
 	fsys, dir := setup(t)
 	os.WriteFile(filepath.Join(dir, "hello.txt"), []byte("world"), 0o644)

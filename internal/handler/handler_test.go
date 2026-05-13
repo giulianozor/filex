@@ -283,6 +283,13 @@ func TestHandleCopyConflictDefaultErrors(t *testing.T) {
 	if !strings.Contains(rr.Body.String(), "destination already exists") {
 		t.Fatalf("expected conflict message, got %s", rr.Body.String())
 	}
+	var payload map[string]string
+	if err := json.NewDecoder(rr.Body).Decode(&payload); err != nil {
+		t.Fatalf("decode error payload: %v", err)
+	}
+	if payload["code"] != "destination_exists" {
+		t.Fatalf("code = %q, want destination_exists", payload["code"])
+	}
 }
 
 func TestHandleCopyConflictRename(t *testing.T) {

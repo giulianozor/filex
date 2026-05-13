@@ -1,6 +1,7 @@
 package handler
 
 import (
+"errors"
 "encoding/json"
 "fmt"
 "io"
@@ -351,6 +352,12 @@ w.WriteHeader(code)
 json.NewEncoder(w).Encode(map[string]string{"error": msg})
 }
 
+func writeErrorCode(w http.ResponseWriter, code int, msg, errCode string) {
+w.Header().Set("Content-Type", "application/json")
+w.WriteHeader(code)
+json.NewEncoder(w).Encode(map[string]string{"error": msg, "code": errCode})
+}
+
 // ---- Version handler --------------------------------------------------------
 
 func (h *Handler) handleVersion(w http.ResponseWriter, r *http.Request) {
@@ -652,6 +659,10 @@ writeError(w, http.StatusBadRequest, err.Error())
 return
 }
 if err := h.fsForRequest(r).MoveWithConflict(req.Src, req.Dst, onConflict); err != nil {
+if errors.Is(err, fslib.ErrDestinationExists) {
+writeErrorCode(w, http.StatusBadRequest, err.Error(), "destination_exists")
+return
+}
 writeError(w, http.StatusBadRequest, err.Error())
 return
 }
@@ -682,6 +693,10 @@ writeError(w, http.StatusBadRequest, err.Error())
 return
 }
 if err := h.fsForRequest(r).CopyWithConflict(req.Src, req.Dst, onConflict); err != nil {
+if errors.Is(err, fslib.ErrDestinationExists) {
+writeErrorCode(w, http.StatusBadRequest, err.Error(), "destination_exists")
+return
+}
 writeError(w, http.StatusBadRequest, err.Error())
 return
 }

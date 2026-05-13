@@ -67,6 +67,7 @@ function basename(p) {
 }
 
 function isDestinationConflictError(err) {
+  if (err?.code === 'destination_exists') return true;
   return typeof err?.message === 'string' && err.message.toLowerCase().includes('destination already exists');
 }
 
@@ -130,7 +131,11 @@ async function apiPost(url, body, opts = {}) {
   });
   if (r.status === 401) { window.location.href = '/login'; return null; }
   const data = await r.json();
-  if (!r.ok) throw new Error(data.error || r.statusText);
+  if (!r.ok) {
+    const err = new Error(data.error || r.statusText);
+    if (data && typeof data.code === 'string') err.code = data.code;
+    throw err;
+  }
   return data;
 }
 

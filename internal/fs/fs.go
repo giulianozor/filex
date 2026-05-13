@@ -500,6 +500,9 @@ func (f *FS) CopyWithConflict(src, dst string, onConflict ConflictStrategy) erro
 				return err
 			}
 		}
+		if absSrc == absDst {
+			return fmt.Errorf("source and destination are the same path")
+		}
 		absDst, err = f.resolveConflictDestination(absSrc, absDst, onConflict)
 		if err != nil {
 			return err
@@ -510,6 +513,7 @@ func (f *FS) CopyWithConflict(src, dst string, onConflict ConflictStrategy) erro
 
 func (f *FS) resolveConflictDestination(absSrc, absDst string, onConflict ConflictStrategy) (string, error) {
 if absSrc == absDst {
+// Moving a path onto itself is a no-op (used by move operations only).
 return absDst, nil
 }
 _, err := os.Stat(absDst)
@@ -539,7 +543,8 @@ dir := filepath.Dir(absPath)
 base := filepath.Base(absPath)
 ext := filepath.Ext(base)
 stem := strings.TrimSuffix(base, ext)
-for i := 1; ; i++ {
+const maxRenameAttempts = 1000
+for i := 1; i <= maxRenameAttempts; i++ {
 suffix := " (copy)"
 if i > 1 {
 suffix = fmt.Sprintf(" (copy %d)", i)
@@ -551,6 +556,7 @@ return candidate, nil
 return "", err
 }
 }
+return "", fmt.Errorf("could not find an available destination name after %d attempts", maxRenameAttempts)
 }
 
 func (f *FS) toJailPath(absPath string) string {
