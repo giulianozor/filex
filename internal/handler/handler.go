@@ -268,18 +268,14 @@ return h.cfg.ShowDotfiles
 }
 
 func normalizeVirtualPath(p string) string {
-clean := path.Clean("/" + p)
-if clean == "." {
-return "/"
-}
-return clean
+return path.Clean("/" + p)
 }
 
-func pathMatchesOrIsWithin(path, candidate string) bool {
-path = normalizeVirtualPath(path)
-candidate = normalizeVirtualPath(candidate)
+func pathMatchesOrIsWithin(targetPath, protectedPath string) bool {
+targetPath = normalizeVirtualPath(targetPath)
+protectedPath = normalizeVirtualPath(protectedPath)
 // A protected directory protects everything beneath it; "/" protects the whole jail.
-return path == candidate || candidate == "/" || strings.HasPrefix(path, candidate+"/")
+return targetPath == protectedPath || protectedPath == "/" || strings.HasPrefix(targetPath, protectedPath+"/")
 }
 
 func (h *Handler) protectedPathsForRequest(r *http.Request) []string {
