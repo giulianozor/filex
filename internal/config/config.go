@@ -18,23 +18,25 @@ type Favourite struct {
 // A nil UID or GID means "do not chown" (ownership is not changed).
 // Use uid: 0 / gid: 0 to explicitly chown to root.
 type User struct {
-	Username     string      `yaml:"username"`
-	PasswordHash string      `yaml:"password_hash"` // bcrypt hash
-	BasePath     string      `yaml:"base_path"`
-	UID          *int        `yaml:"uid,omitempty"`
-	GID          *int        `yaml:"gid,omitempty"`
-	ShowDotfiles *bool       `yaml:"show_dotfiles,omitempty"` // nil = use global default
-	Favourites   []Favourite `yaml:"favourites,omitempty"`
+	Username       string      `yaml:"username"`
+	PasswordHash   string      `yaml:"password_hash"` // bcrypt hash
+	BasePath       string      `yaml:"base_path"`
+	UID            *int        `yaml:"uid,omitempty"`
+	GID            *int        `yaml:"gid,omitempty"`
+	ShowDotfiles   *bool       `yaml:"show_dotfiles,omitempty"` // nil = use global default
+	ProtectedPaths []string    `yaml:"protected_paths,omitempty"`
+	Favourites     []Favourite `yaml:"favourites,omitempty"`
 }
 
 type Config struct {
-	Host            string      `yaml:"host"`
-	Port            int         `yaml:"port"`
-	BasePath        string      `yaml:"base_path"`      // global default (used when no users configured)
-	ShowDotfiles    bool        `yaml:"show_dotfiles"`
-	SessionTTLDays  int         `yaml:"session_ttl_days"` // session lifetime in days; 0 = use default (30)
-	Favourites      []Favourite `yaml:"favourites"`
-	Users           []User      `yaml:"users"`
+	Host           string      `yaml:"host"`
+	Port           int         `yaml:"port"`
+	BasePath       string      `yaml:"base_path"` // global default (used when no users configured)
+	ShowDotfiles   bool        `yaml:"show_dotfiles"`
+	SessionTTLDays int         `yaml:"session_ttl_days"` // session lifetime in days; 0 = use default (30)
+	ProtectedPaths []string    `yaml:"protected_paths"`
+	Favourites     []Favourite `yaml:"favourites"`
+	Users          []User      `yaml:"users"`
 }
 
 // SessionTTL returns the effective session duration derived from SessionTTLDays.

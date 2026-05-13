@@ -96,6 +96,45 @@ func TestHandleDelete(t *testing.T) {
 	}
 }
 
+func TestHandleDelete_ProtectedPath(t *testing.T) {
+	dir := t.TempDir()
+	fsys, err := fslib.New(dir)
+	if err != nil {
+		t.Fatalf("fs.New: %v", err)
+	}
+	cfg := &config.Config{
+		Host:           "0.0.0.0",
+		Port:           8080,
+		BasePath:       dir,
+		ShowDotfiles:   false,
+		ProtectedPaths: []string{"/keep.txt", "/protected"},
+	}
+	h := New(fsys, cfg, http.Dir(dir), nil, nil, "", "test")
+
+	if err := os.WriteFile(filepath.Join(dir, "keep.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write keep.txt: %v", err)
+	}
+	if err := os.Mkdir(filepath.Join(dir, "protected"), 0o755); err != nil {
+		t.Fatalf("mkdir protected: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "protected", "child.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatalf("write child.txt: %v", err)
+	}
+
+	for _, body := range []string{`{"path":"/keep.txt"}`, `{"path":"/protected/child.txt"}`} {
+		rr := doRequest(t, h, http.MethodPost, "/api/delete", strings.NewReader(body))
+		if rr.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(dir, "keep.txt")); err != nil {
+		t.Fatalf("keep.txt should still exist: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "protected", "child.txt")); err != nil {
+		t.Fatalf("protected/child.txt should still exist: %v", err)
+	}
+}
+
 func TestHandleRename(t *testing.T) {
 	h, dir := setupHandler(t)
 	os.WriteFile(filepath.Join(dir, "old.txt"), []byte("x"), 0o644)
@@ -322,7 +361,6 @@ func TestFavouritesPersistence(t *testing.T) {
 	}
 }
 
-
 func TestHandleConfig(t *testing.T) {
 	h, _ := setupHandler(t)
 	rr := doRequest(t, h, http.MethodGet, "/api/config", nil)
@@ -353,48 +391,81 @@ func TestHandleDelete_Bulk(t *testing.T) {
 	}
 }
 
-func TestHandleStream_ServesFileInline(t *testing.T) {
-h, dir := setupHandler(t)
-content := []byte("video data")
-os.WriteFile(filepath.Join(dir, "sample.mp4"), content, 0o644)
+func TestHandleDelete_BulkProtectedIsAtomic(t *testing.T) {
+	dir := t.TempDir()
+	fsys, err := fslib.New(dir)
+	if err != nil {
+		t.Fatalf("fs.New: %v", err)
+	}
+	cfg := &config.Config{
+		Host:           "0.0.0.0",
+		Port:           8080,
+		BasePath:       dir,
+		ShowDotfiles:   false,
+		ProtectedPaths: []string{"/b.txt"},
+	}
+	h := New(fsys, cfg, http.Dir(dir), nil, nil, "", "test")
 
-rr := doRequest(t, h, http.MethodGet, "/api/stream?path=/sample.mp4", nil)
-if rr.Code != http.StatusOK {
-t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("x"), 0o644); err != nil {
+			t.Fatalf("write %s: %v", name, err)
+		}
+	}
+
+	body := `{"paths":["/a.txt","/b.txt"]}`
+	rr := doRequest(t, h, http.MethodPost, "/api/delete", strings.NewReader(body))
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+	for _, name := range []string{"a.txt", "b.txt"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			t.Fatalf("%s should still exist: %v", name, err)
+		}
+	}
 }
-// Must NOT force a download attachment.
-cd := rr.Header().Get("Content-Disposition")
-if strings.Contains(cd, "attachment") {
-t.Errorf("Content-Disposition = %q, must not contain 'attachment' for inline streaming", cd)
-}
-// Body must contain the full file content.
-if got := rr.Body.Bytes(); string(got) != string(content) {
-t.Errorf("body = %q, want %q", got, content)
-}
+
+func TestHandleStream_ServesFileInline(t *testing.T) {
+	h, dir := setupHandler(t)
+	content := []byte("video data")
+	os.WriteFile(filepath.Join(dir, "sample.mp4"), content, 0o644)
+
+	rr := doRequest(t, h, http.MethodGet, "/api/stream?path=/sample.mp4", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	// Must NOT force a download attachment.
+	cd := rr.Header().Get("Content-Disposition")
+	if strings.Contains(cd, "attachment") {
+		t.Errorf("Content-Disposition = %q, must not contain 'attachment' for inline streaming", cd)
+	}
+	// Body must contain the full file content.
+	if got := rr.Body.Bytes(); string(got) != string(content) {
+		t.Errorf("body = %q, want %q", got, content)
+	}
 }
 
 func TestHandleStream_MissingPath(t *testing.T) {
-h, _ := setupHandler(t)
-rr := doRequest(t, h, http.MethodGet, "/api/stream", nil)
-if rr.Code != http.StatusBadRequest {
-t.Fatalf("status = %d, want 400", rr.Code)
-}
+	h, _ := setupHandler(t)
+	rr := doRequest(t, h, http.MethodGet, "/api/stream", nil)
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400", rr.Code)
+	}
 }
 
 func TestHandleStream_RangeRequest(t *testing.T) {
-h, dir := setupHandler(t)
-content := []byte("abcdefghij") // 10 bytes
-os.WriteFile(filepath.Join(dir, "audio.mp3"), content, 0o644)
+	h, dir := setupHandler(t)
+	content := []byte("abcdefghij") // 10 bytes
+	os.WriteFile(filepath.Join(dir, "audio.mp3"), content, 0o644)
 
-req := httptest.NewRequest(http.MethodGet, "/api/stream?path=/audio.mp3", nil)
-req.Header.Set("Range", "bytes=2-5")
-rr := httptest.NewRecorder()
-h.ServeHTTP(rr, req)
+	req := httptest.NewRequest(http.MethodGet, "/api/stream?path=/audio.mp3", nil)
+	req.Header.Set("Range", "bytes=2-5")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
 
-if rr.Code != http.StatusPartialContent {
-t.Fatalf("status = %d, want 206 for range request", rr.Code)
-}
-if got := rr.Body.String(); got != "cdef" {
-t.Errorf("range body = %q, want %q", got, "cdef")
-}
+	if rr.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206 for range request", rr.Code)
+	}
+	if got := rr.Body.String(); got != "cdef" {
+		t.Errorf("range body = %q, want %q", got, "cdef")
+	}
 }

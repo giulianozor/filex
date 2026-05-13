@@ -10,6 +10,7 @@ A fast, self-hosted web-based file browser with a dark theme, built in Go.
 - ✏️ In-browser text editor
 - 🖼️ Inline previews for images, video, audio, and text files
 - 📂 Create folders, rename, delete (single or bulk), move files
+- 🛡️ Configurable protected paths to prevent deleting important files/folders
 - ⭐ Configurable favourite folders (sidebar bookmarks)
 - 👁️ Toggle hidden (dot) files
 - 🔒 Path jail — each user is confined to their own base directory
@@ -41,6 +42,9 @@ port: 8080
 base_path: "/data"
 show_dotfiles: false
 session_ttl_days: 30   # session lifetime in days (default: 30)
+protected_paths:
+  - "/important"
+  - "/important/keep.txt"
 favourites:
   - name: "Home"
     path: "/"
@@ -63,6 +67,8 @@ users:
     base_path: "/data/alice"
     uid: 1001                     # omit to skip chown
     gid: 1001
+    protected_paths:
+      - "/documents/keep"
     favourites:
       - name: "Home"
         path: "/"
