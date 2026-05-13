@@ -743,6 +743,14 @@ function folderBrowserUp(mode) {
   loadFolderBrowser(mode, parent);
 }
 
+async function ensureBatchDestinationDirectory(dst) {
+  try {
+    await apiGet('/api/list?path=' + encodeURIComponent(dst));
+  } catch (_) {
+    await apiPost('/api/mkdir', { path: dst });
+  }
+}
+
 function openMoveModal(pathOrPaths) {
   state.moveSrc = Array.isArray(pathOrPaths) ? pathOrPaths : [pathOrPaths];
   const initPath = state.currentPath;
@@ -758,6 +766,14 @@ async function doMove() {
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.moveSrc) ? state.moveSrc : [state.moveSrc];
   if (srcs.length === 0) { toast('No items to move', 'error'); return; }
+  if (srcs.length > 1) {
+    try {
+      await ensureBatchDestinationDirectory(dst);
+    } catch (e) {
+      toast('Move failed: ' + e.message, 'error');
+      return;
+    }
+  }
   const bar = document.getElementById('upload-progress-bar');
   const btn = document.getElementById('move-confirm');
   bar.classList.add('indeterminate');
@@ -864,6 +880,14 @@ async function doCopy() {
   if (!dst) { toast('Enter a destination path', 'error'); return; }
   const srcs = Array.isArray(state.copySrc) ? state.copySrc : [state.copySrc];
   if (srcs.length === 0) { toast('No items to copy', 'error'); return; }
+  if (srcs.length > 1) {
+    try {
+      await ensureBatchDestinationDirectory(dst);
+    } catch (e) {
+      toast('Copy failed: ' + e.message, 'error');
+      return;
+    }
+  }
   const bar = document.getElementById('upload-progress-bar');
   const btn = document.getElementById('copy-confirm');
   bar.classList.add('indeterminate');
