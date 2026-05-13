@@ -24,6 +24,7 @@ type User struct {
 	UID          *int        `yaml:"uid,omitempty"`
 	GID          *int        `yaml:"gid,omitempty"`
 	ShowDotfiles *bool       `yaml:"show_dotfiles,omitempty"` // nil = use global default
+	ProtectedPaths []string  `yaml:"protected_paths,omitempty"`
 	Favourites   []Favourite `yaml:"favourites,omitempty"`
 }
 
@@ -33,6 +34,7 @@ type Config struct {
 	BasePath        string      `yaml:"base_path"`      // global default (used when no users configured)
 	ShowDotfiles    bool        `yaml:"show_dotfiles"`
 	SessionTTLDays  int         `yaml:"session_ttl_days"` // session lifetime in days; 0 = use default (30)
+	ProtectedPaths  []string    `yaml:"protected_paths"`
 	Favourites      []Favourite `yaml:"favourites"`
 	Users           []User      `yaml:"users"`
 }

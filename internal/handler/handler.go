@@ -5,6 +5,7 @@ import (
 "fmt"
 "io"
 "net/http"
+	"path"
 "path/filepath"
 "strconv"
 "strings"
@@ -264,6 +265,45 @@ if u != nil && u.ShowDotfiles != nil {
 return *u.ShowDotfiles
 }
 return h.cfg.ShowDotfiles
+}
+
+func normalizeVirtualPath(p string) string {
+return path.Clean("/" + p)
+}
+
+func pathMatchesOrIsWithin(targetPath, protectedPath string) bool {
+targetPath = normalizeVirtualPath(targetPath)
+protectedPath = normalizeVirtualPath(protectedPath)
+if targetPath == protectedPath {
+return true
+}
+// A protected "/" disables deletion for the entire jailed tree.
+if protectedPath == "/" {
+return true
+}
+// Protected directories also protect everything beneath them.
+return strings.HasPrefix(targetPath, protectedPath+"/")
+}
+
+func (h *Handler) protectedPathsForRequest(r *http.Request) []string {
+paths := make([]string, 0, len(h.cfg.ProtectedPaths))
+paths = append(paths, h.cfg.ProtectedPaths...)
+if u := h.userForRequest(r); u != nil {
+paths = append(paths, u.ProtectedPaths...)
+}
+return paths
+}
+
+func (h *Handler) protectedDeleteTarget(r *http.Request, targets []string) string {
+protectedPaths := h.protectedPathsForRequest(r)
+for _, target := range targets {
+for _, protectedPath := range protectedPaths {
+if pathMatchesOrIsWithin(target, protectedPath) {
+return normalizeVirtualPath(target)
+}
+}
+}
+return ""
 }
 
 func serveLogin(w http.ResponseWriter, r *http.Request, staticFS http.FileSystem) {
@@ -572,6 +612,10 @@ targets = []string{req.Path}
 }
 if len(targets) == 0 {
 writeError(w, http.StatusBadRequest, "path or paths required")
+return
+}
+if blocked := h.protectedDeleteTarget(r, targets); blocked != "" {
+writeError(w, http.StatusBadRequest, fmt.Sprintf("path %q is protected and cannot be deleted", blocked))
 return
 }
 fs := h.fsForRequest(r)
