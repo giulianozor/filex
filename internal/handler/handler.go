@@ -274,8 +274,15 @@ return path.Clean("/" + p)
 func pathMatchesOrIsWithin(targetPath, protectedPath string) bool {
 targetPath = normalizeVirtualPath(targetPath)
 protectedPath = normalizeVirtualPath(protectedPath)
-// A protected directory protects everything beneath it; "/" protects the whole jail.
-return targetPath == protectedPath || protectedPath == "/" || strings.HasPrefix(targetPath, protectedPath+"/")
+if targetPath == protectedPath {
+return true
+}
+// A protected "/" disables deletion for the entire jailed tree.
+if protectedPath == "/" {
+return true
+}
+// Protected directories also protect everything beneath them.
+return strings.HasPrefix(targetPath, protectedPath+"/")
 }
 
 func (h *Handler) protectedPathsForRequest(r *http.Request) []string {

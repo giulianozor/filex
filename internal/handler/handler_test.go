@@ -121,10 +121,16 @@ func TestHandleDelete_ProtectedPath(t *testing.T) {
 		t.Fatalf("write child.txt: %v", err)
 	}
 
-	for _, body := range []string{`{"path":"/keep.txt"}`, `{"path":"/protected/child.txt"}`} {
+	for body, blockedPath := range map[string]string{
+		`{"path":"/keep.txt"}`:            "/keep.txt",
+		`{"path":"/protected/child.txt"}`: "/protected/child.txt",
+	} {
 		rr := doRequest(t, h, http.MethodPost, "/api/delete", strings.NewReader(body))
 		if rr.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+		}
+		if !strings.Contains(rr.Body.String(), blockedPath) {
+			t.Fatalf("expected response body %q to mention blocked path %q", rr.Body.String(), blockedPath)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, "keep.txt")); err != nil {
@@ -417,6 +423,9 @@ func TestHandleDelete_BulkProtectedIsAtomic(t *testing.T) {
 	rr := doRequest(t, h, http.MethodPost, "/api/delete", strings.NewReader(body))
 	if rr.Code != http.StatusBadRequest {
 		t.Fatalf("status = %d, want %d, body = %s", rr.Code, http.StatusBadRequest, rr.Body.String())
+	}
+	if !strings.Contains(rr.Body.String(), "/b.txt") {
+		t.Fatalf("expected response body %q to mention blocked path %q", rr.Body.String(), "/b.txt")
 	}
 	for _, name := range []string{"a.txt", "b.txt"} {
 		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
