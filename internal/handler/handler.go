@@ -5,6 +5,7 @@ import (
 "fmt"
 "io"
 "net/http"
+	"path"
 "path/filepath"
 "strconv"
 "strings"
@@ -266,8 +267,8 @@ return *u.ShowDotfiles
 return h.cfg.ShowDotfiles
 }
 
-func normalizeVirtualPath(path string) string {
-clean := filepath.Clean("/" + path)
+func normalizeVirtualPath(p string) string {
+clean := path.Clean("/" + p)
 if clean == "." {
 return "/"
 }
@@ -277,6 +278,7 @@ return clean
 func pathMatchesOrIsWithin(path, candidate string) bool {
 path = normalizeVirtualPath(path)
 candidate = normalizeVirtualPath(candidate)
+// A protected directory protects everything beneath it; "/" protects the whole jail.
 return path == candidate || candidate == "/" || strings.HasPrefix(path, candidate+"/")
 }
 
