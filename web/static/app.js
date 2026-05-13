@@ -736,8 +736,10 @@ async function doMove() {
     toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
+    const moveModal = document.getElementById('modal-move');
+    const shouldNavigateToDestination = moveModal && moveModal.classList.contains('open');
     closeModal('modal-move');
-    loadDirectory(state.currentPath);
+    loadDirectory(shouldNavigateToDestination ? dst : state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
       toast('Move cancelled', 'info');
@@ -824,8 +826,10 @@ async function doCopy() {
     toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
+    const copyModal = document.getElementById('modal-copy');
+    const shouldNavigateToDestination = copyModal && copyModal.classList.contains('open');
     closeModal('modal-copy');
-    loadDirectory(state.currentPath);
+    loadDirectory(shouldNavigateToDestination ? dst : state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
       toast('Copy cancelled', 'info');
