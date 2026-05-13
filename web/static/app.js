@@ -10,6 +10,10 @@ const state = {
   entries: [],
   moveSrc: null,
   copySrc: null,
+  moveInProgress: false,
+  copyInProgress: false,
+  moveModalClosedManually: false,
+  copyModalClosedManually: false,
   editorPath: null,
   favourites: [],
   opAbort: null,   // function to cancel the current running operation
@@ -720,6 +724,8 @@ async function doMove() {
 
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
+  state.moveInProgress = true;
+  state.moveModalClosedManually = false;
   showOpProgress('Moving…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
@@ -736,9 +742,8 @@ async function doMove() {
     toast(srcs.length === 1 ? 'Moved successfully' : `Moved ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
-    const moveModal = document.getElementById('modal-move');
-    const shouldNavigateToDestination = moveModal && moveModal.classList.contains('open');
-    closeModal('modal-move');
+    const shouldNavigateToDestination = !state.moveModalClosedManually;
+    closeModal('modal-move', false);
     loadDirectory(shouldNavigateToDestination ? dst : state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
@@ -747,6 +752,7 @@ async function doMove() {
       toast('Move failed: ' + e.message, 'error');
     }
   } finally {
+    state.moveInProgress = false;
     hideOpProgress();
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
@@ -810,6 +816,8 @@ async function doCopy() {
 
   const controller = new AbortController();
   state.opAbort = () => controller.abort();
+  state.copyInProgress = true;
+  state.copyModalClosedManually = false;
   showOpProgress('Copying…', 0, formatTransferProgress(0, srcs.length, basename(srcs[0])));
 
   let done = 0;
@@ -826,9 +834,8 @@ async function doCopy() {
     toast(srcs.length === 1 ? 'Copied successfully' : `Copied ${srcs.length} items`, 'success');
     srcs.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
-    const copyModal = document.getElementById('modal-copy');
-    const shouldNavigateToDestination = copyModal && copyModal.classList.contains('open');
-    closeModal('modal-copy');
+    const shouldNavigateToDestination = !state.copyModalClosedManually;
+    closeModal('modal-copy', false);
     loadDirectory(shouldNavigateToDestination ? dst : state.currentPath);
   } catch (e) {
     if (e.name === 'AbortError') {
@@ -837,6 +844,7 @@ async function doCopy() {
       toast('Copy failed: ' + e.message, 'error');
     }
   } finally {
+    state.copyInProgress = false;
     hideOpProgress();
     bar.classList.remove('indeterminate');
     bar.style.display = 'none';
@@ -1087,9 +1095,11 @@ function openModal(id) {
   if (el) { el.classList.add('open'); }
 }
 
-function closeModal(id) {
+function closeModal(id, manual = true) {
   const el = document.getElementById(id);
   if (el) {
+    if (manual && id === 'modal-move' && state.moveInProgress) state.moveModalClosedManually = true;
+    if (manual && id === 'modal-copy' && state.copyInProgress) state.copyModalClosedManually = true;
     el.classList.remove('open');
     // Stop any media playing inside the modal
     el.querySelectorAll('video, audio').forEach(m => { m.pause(); m.src = ''; });
