@@ -556,7 +556,7 @@ return candidate, nil
 return "", err
 }
 }
-return "", fmt.Errorf("could not find an available destination name after %d attempts", maxRenameAttempts)
+return "", fmt.Errorf("could not find an available destination name for %q after %d attempts", f.toJailPath(absPath), maxRenameAttempts)
 }
 
 func (f *FS) toJailPath(absPath string) string {

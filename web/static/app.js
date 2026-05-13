@@ -82,7 +82,7 @@ function askConflictResolution(actionLabel, src, dst) {
   while (true) {
     const answer = window.prompt(
       `${actionLabel} conflict: "${item}" already exists in "${dst}".\nChoose: [c]ancel, [o]verwrite, [r]ename new file.`,
-      'o'
+      'c'
     );
     if (answer === null) return { action: 'cancel', applyToAll: false };
     const choice = answer.trim().toLowerCase();

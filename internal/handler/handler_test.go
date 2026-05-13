@@ -309,6 +309,13 @@ func TestHandleCopyConflictRename(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "copy (copy).txt")); err != nil {
 		t.Fatalf("copy (copy).txt not found: %v", err)
 	}
+	data, err := os.ReadFile(filepath.Join(dir, "copy (copy).txt"))
+	if err != nil {
+		t.Fatalf("read copy (copy).txt: %v", err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("copy (copy).txt content = %q, want %q", string(data), "new")
+	}
 }
 
 func TestHandleZipDownload_Single(t *testing.T) {
