@@ -1470,7 +1470,15 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Browser back/forward
+  function resetTransientUiState() {
+    document.querySelectorAll('.modal-backdrop.open').forEach(m => closeModal(m.id));
+    document.getElementById('sidebar').classList.remove('open');
+    document.getElementById('sidebar-overlay').classList.remove('visible');
+    document.getElementById('drop-overlay').classList.remove('visible');
+  }
+
   window.addEventListener('popstate', e => {
+    resetTransientUiState();
     const path = (e.state && e.state.path) ||
                  new URL(window.location).searchParams.get('path') || '/';
     loadDirectory(path, { addHistory: false });
@@ -1479,6 +1487,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Handle page restoration from bfcache (e.g. browser back button from another site)
   window.addEventListener('pageshow', e => {
     if (e.persisted) {
+      resetTransientUiState();
       loadDirectory(state.currentPath, { addHistory: false });
     }
   });
