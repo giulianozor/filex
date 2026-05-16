@@ -158,6 +158,25 @@
   </div>
 </div>
 
+<!-- Delete confirmation modal -->
+<div class="modal-backdrop" id="modal-delete">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Confirm Delete</span>
+      <button class="modal-close" data-close="modal-delete">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="delete-confirm-msg" style="margin:0 0 10px;font-weight:500;"></p>
+      <ul id="delete-confirm-list" style="margin:0 0 12px;padding-left:18px;max-height:160px;overflow-y:auto;"></ul>
+      <p style="margin:0;font-size:12px;color:var(--danger)">This cannot be undone.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-delete">Cancel</button>
+      <button class="btn danger" id="delete-confirm">Delete</button>
+    </div>
+  </div>
+</div>
+
 <!-- Mkdir modal -->
 <div class="modal-backdrop" id="modal-mkdir">
   <div class="modal">

@@ -10,6 +10,7 @@ const state = {
   entries: [],
   moveSrc: null,
   copySrc: null,
+  deletePaths: null,
   moveInProgress: false,
   copyInProgress: false,
   moveModalClosedManually: false,
@@ -20,6 +21,9 @@ const state = {
   previewList: [],  // previewable file entries in the current directory
   previewIndex: -1, // index of the currently previewed entry in previewList
 };
+
+// Resolve function for the pending delete confirmation modal promise
+let _deleteModalResolve = null;
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 const ICONS = {
@@ -504,21 +508,44 @@ function startInlineRename(entry, nameSpan) {
 
 // ─── Delete ───────────────────────────────────────────────────────────────────
 async function deleteFiles(paths) {
-  if (!paths || paths.length === 0) return;
+  if (!paths || paths.length === 0) return false;
   const names = paths.map(basename);
-  const namesList = names.map(name => `• ${name}`).join('\n');
   const isSingle = names.length === 1;
-  if (!confirm(`Delete ${isSingle ? 'this item' : 'these items'}?\n${namesList}\n\nThis cannot be undone.`)) return false;
+
+  // Populate the confirmation modal (avoids native confirm() which browsers can
+  // suppress after bfcache page restoration / back-button navigation)
+  document.getElementById('delete-confirm-msg').textContent =
+    `Delete ${isSingle ? 'this item' : 'these ' + names.length + ' items'}?`;
+  const ul = document.getElementById('delete-confirm-list');
+  ul.innerHTML = '';
+  names.forEach(name => {
+    const li = document.createElement('li');
+    li.textContent = name;
+    ul.appendChild(li);
+  });
+
+  state.deletePaths = paths;
+  openModal('modal-delete');
+  return new Promise(resolve => { _deleteModalResolve = resolve; });
+}
+
+async function doDelete() {
+  const paths = state.deletePaths;
+  const resolve = _deleteModalResolve;
+  state.deletePaths = null;
+  _deleteModalResolve = null;
+  closeModal('modal-delete', false);
+  if (!paths || paths.length === 0) { if (resolve) resolve(false); return; }
   try {
     await apiPost('/api/delete', { paths });
-    toast(paths.length === 1 ? `Deleted ${names[0]}` : `Deleted ${paths.length} items`, 'success');
+    toast(paths.length === 1 ? `Deleted ${basename(paths[0])}` : `Deleted ${paths.length} items`, 'success');
     paths.forEach(p => state.selectedFiles.delete(p));
     updateSelectionButtons();
     loadDirectory(state.currentPath);
-    return true;
+    if (resolve) resolve(true);
   } catch (e) {
     toast('Delete failed: ' + e.message, 'error');
-    return false;
+    if (resolve) resolve(false);
   }
 }
 
@@ -1198,6 +1225,12 @@ function closeModal(id, manual = true) {
   if (el) {
     if (manual && id === 'modal-move' && state.moveInProgress) state.moveModalClosedManually = true;
     if (manual && id === 'modal-copy' && state.copyInProgress) state.copyModalClosedManually = true;
+    if (id === 'modal-delete' && _deleteModalResolve) {
+      const resolve = _deleteModalResolve;
+      state.deletePaths = null;
+      _deleteModalResolve = null;
+      resolve(false);
+    }
     el.classList.remove('open');
     // Stop any media playing inside the modal
     el.querySelectorAll('video, audio').forEach(m => { m.pause(); m.src = ''; });
@@ -1345,6 +1378,9 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('mkdir-name').addEventListener('keydown', e => {
     if (e.key === 'Enter') doMkdir();
   });
+
+  // Delete confirm
+  document.getElementById('delete-confirm').addEventListener('click', doDelete);
 
   // Dotfiles toggle
   document.getElementById('btn-dotfiles').addEventListener('click', () => {
