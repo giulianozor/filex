@@ -5,7 +5,7 @@ A fast, self-hosted web-based file browser with a dark theme, built in Go.
 ## Features
 
 - 📁 Directory listing with icons, size, and modification time
-- 📤 File upload (drag-and-drop or click), with progress bar
+- 📤 Multi-file upload manager (drag-and-drop or click), with per-file progress, speed, ETA, cancel, and popup view
 - 📥 File download
 - ✏️ In-browser text editor
 - 🖼️ Inline previews for images, video, audio, and text files

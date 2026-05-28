@@ -18,6 +18,9 @@ const state = {
   editorPath: null,
   favourites: [],
   opAbort: null,   // function to cancel the current running operation
+  uploadTasks: [],
+  uploadTaskSeq: 0,
+  uploadRefreshTimer: null,
   previewList: [],  // previewable file entries in the current directory
   previewIndex: -1, // index of the currently previewed entry in previewList
 };
@@ -591,76 +594,256 @@ function formatTransferProgress(done, total, currentLabel) {
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
-// Sentinel error thrown when an XHR upload is aborted by the user.
-class UploadAbortError extends Error {
-  constructor() { super('Upload cancelled'); this.name = 'UploadAbortError'; }
+function formatUploadRate(bytesPerSecond) {
+  if (!bytesPerSecond || bytesPerSecond <= 0) return '—';
+  return `${formatSize(bytesPerSecond)}/s`;
+}
+
+function formatUploadEta(seconds) {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '—';
+  if (seconds < 60) return `${Math.ceil(seconds)}s`;
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.ceil(seconds % 60);
+  return `${mins}m ${secs}s`;
+}
+
+function createUploadTask(file) {
+  state.uploadTaskSeq += 1;
+  return {
+    id: `u${Date.now()}-${state.uploadTaskSeq}`,
+    file,
+    name: file.name,
+    size: file.size || 0,
+    loaded: 0,
+    status: 'uploading',
+    speedBps: 0,
+    etaSec: Infinity,
+    xhr: null,
+    error: '',
+    lastSampleAt: 0,
+    lastLoaded: 0,
+  };
+}
+
+function getUploadTask(id) {
+  return state.uploadTasks.find(t => t.id === id);
+}
+
+function cancelUploadTask(id) {
+  const task = getUploadTask(id);
+  if (!task || ['done', 'error', 'cancelled'].includes(task.status)) return;
+  if (task.xhr) {
+    task.xhr.abort();
+  } else {
+    task.status = 'cancelled';
+  }
+  renderUploadManager();
+  updateUploadProgressBar();
+}
+
+function buildUploadStatusText(task) {
+  const pct = task.size > 0 ? Math.round((task.loaded / task.size) * 100) : 0;
+  if (task.status === 'uploading') {
+    return `${pct}% • ${formatSize(task.loaded)} / ${formatSize(task.size)} • ${formatUploadRate(task.speedBps)} • ETA ${formatUploadEta(task.etaSec)}`;
+  }
+  if (task.status === 'done') return `Completed • ${formatSize(task.size)}`;
+  if (task.status === 'cancelled') return `Cancelled • ${pct}%`;
+  if (task.status === 'error') return `Failed • ${task.error || 'Unknown error'}`;
+  return 'Pending';
+}
+
+function renderUploadItems(container, tasks) {
+  container.innerHTML = '';
+  tasks.forEach(task => {
+    const item = document.createElement('div');
+    item.className = 'upload-item' +
+      (task.status === 'done' ? ' done' : '') +
+      (task.status === 'cancelled' ? ' cancelled' : '') +
+      (task.status === 'error' ? ' error' : '');
+
+    const head = document.createElement('div');
+    head.className = 'upload-item-head';
+
+    const name = document.createElement('div');
+    name.className = 'upload-item-name';
+    name.textContent = task.name;
+    name.title = task.name;
+    head.appendChild(name);
+
+    if (task.status === 'uploading') {
+      const cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'upload-item-cancel';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', () => cancelUploadTask(task.id));
+      head.appendChild(cancel);
+    }
+    item.appendChild(head);
+
+    const track = document.createElement('div');
+    track.className = 'upload-item-track';
+    const fill = document.createElement('div');
+    fill.className = 'upload-item-fill';
+    const pct = task.size > 0 ? Math.max(0, Math.min(100, (task.loaded / task.size) * 100)) : 0;
+    fill.style.width = pct + '%';
+    track.appendChild(fill);
+    item.appendChild(track);
+
+    const meta = document.createElement('div');
+    meta.className = 'upload-item-meta';
+    meta.textContent = buildUploadStatusText(task);
+    item.appendChild(meta);
+
+    container.appendChild(item);
+  });
+}
+
+function renderUploadManager() {
+  const sidebarList = document.getElementById('upload-list');
+  const sidebarEmpty = document.getElementById('upload-list-empty');
+  const modalList = document.getElementById('upload-modal-list');
+  const modalEmpty = document.getElementById('upload-modal-empty');
+  const countEl = document.getElementById('upload-count');
+  if (!sidebarList || !sidebarEmpty || !modalList || !modalEmpty || !countEl) return;
+
+  const tasks = [...state.uploadTasks].reverse();
+  const activeCount = state.uploadTasks.filter(t => t.status === 'uploading').length;
+
+  countEl.style.display = activeCount > 0 ? '' : 'none';
+  countEl.textContent = `${activeCount} active`;
+
+  if (tasks.length === 0) {
+    sidebarEmpty.style.display = '';
+    modalEmpty.style.display = '';
+    sidebarList.innerHTML = '';
+    modalList.innerHTML = '';
+    return;
+  }
+
+  sidebarEmpty.style.display = 'none';
+  modalEmpty.style.display = 'none';
+  renderUploadItems(sidebarList, tasks);
+  renderUploadItems(modalList, tasks);
+}
+
+function updateUploadProgressBar() {
+  const bar = document.getElementById('upload-progress-bar');
+  if (!bar) return;
+  const active = state.uploadTasks.filter(t => t.status === 'uploading');
+  if (active.length === 0) {
+    bar.classList.remove('indeterminate');
+    bar.style.display = 'none';
+    bar.style.width = '0%';
+    return;
+  }
+  const total = active.reduce((acc, t) => acc + Math.max(t.size, 1), 0);
+  const loaded = active.reduce((acc, t) => acc + Math.min(Math.max(t.loaded, 0), Math.max(t.size, 1)), 0);
+  const pct = Math.max(0, Math.min(100, (loaded / total) * 100));
+  bar.classList.remove('indeterminate');
+  bar.style.display = 'block';
+  bar.style.width = pct + '%';
+}
+
+function scheduleUploadDirectoryReload() {
+  if (state.uploadRefreshTimer) return;
+  state.uploadRefreshTimer = setTimeout(() => {
+    state.uploadRefreshTimer = null;
+    loadDirectory(state.currentPath);
+  }, 350);
+}
+
+function runUploadTask(task) {
+  return new Promise(resolve => {
+    const fd = new FormData();
+    fd.append('file', task.file);
+
+    const xhr = new XMLHttpRequest();
+    task.xhr = xhr;
+    task.status = 'uploading';
+    task.lastSampleAt = Date.now();
+    task.lastLoaded = 0;
+
+    xhr.open('POST', '/api/upload?path=' + encodeURIComponent(state.currentPath));
+    xhr.upload.onprogress = e => {
+      if (!e.lengthComputable) return;
+      const now = Date.now();
+      task.loaded = e.loaded;
+      const dt = (now - task.lastSampleAt) / 1000;
+      const dBytes = task.loaded - task.lastLoaded;
+      if (dt > 0 && dBytes >= 0) {
+        const instant = dBytes / dt;
+        task.speedBps = task.speedBps > 0 ? (task.speedBps * 0.7 + instant * 0.3) : instant;
+      }
+      task.lastSampleAt = now;
+      task.lastLoaded = task.loaded;
+      task.etaSec = task.speedBps > 0 ? (Math.max(task.size - task.loaded, 0) / task.speedBps) : Infinity;
+      renderUploadManager();
+      updateUploadProgressBar();
+    };
+    xhr.onload = () => {
+      task.xhr = null;
+      if (xhr.status === 200) {
+        task.status = 'done';
+        task.loaded = task.size;
+        task.etaSec = 0;
+        scheduleUploadDirectoryReload();
+      } else {
+        task.status = 'error';
+        try { task.error = JSON.parse(xhr.responseText).error || xhr.statusText; }
+        catch { task.error = xhr.statusText || 'Upload failed'; }
+      }
+      renderUploadManager();
+      updateUploadProgressBar();
+      resolve(task.status);
+    };
+    xhr.onerror = () => {
+      task.xhr = null;
+      task.status = 'error';
+      task.error = 'Network error';
+      renderUploadManager();
+      updateUploadProgressBar();
+      resolve(task.status);
+    };
+    xhr.onabort = () => {
+      task.xhr = null;
+      task.status = 'cancelled';
+      renderUploadManager();
+      updateUploadProgressBar();
+      resolve(task.status);
+    };
+    xhr.send(fd);
+  });
 }
 
 async function uploadFiles(files) {
   if (!files || files.length === 0) return;
-  const bar = document.getElementById('upload-progress-bar');
-  bar.style.display = 'block';
-  bar.style.width = '0%';
+  const tasks = files.map(createUploadTask);
+  state.uploadTasks.push(...tasks);
+  renderUploadManager();
+  updateUploadProgressBar();
 
-  const total = files.length;
-  let done = 0;
-  let cancelled = false;
-  let currentXhr = null;
-
-  state.opAbort = () => {
-    cancelled = true;
-    if (currentXhr) currentXhr.abort();
-  };
-  showOpProgress('Uploading…', 0, `0 / ${total} file${total !== 1 ? 's' : ''}`);
-
-  for (const file of files) {
-    if (cancelled) break;
-    const fd = new FormData();
-    fd.append('file', file);
-    try {
-      await new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        currentXhr = xhr;
-        xhr.open('POST', '/api/upload?path=' + encodeURIComponent(state.currentPath));
-        xhr.upload.onprogress = e => {
-          if (e.lengthComputable) {
-            const pct = ((done + e.loaded / e.total) / total) * 100;
-            bar.style.width = pct + '%';
-            showOpProgress('Uploading…', pct, file.name);
-          }
-        };
-        xhr.onload = () => {
-          if (xhr.status === 200) resolve();
-          else {
-            try { reject(new Error(JSON.parse(xhr.responseText).error)); }
-            catch { reject(new Error(xhr.statusText)); }
-          }
-        };
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.onabort = () => reject(new UploadAbortError());
-        xhr.send(fd);
-      });
-      done++;
-      const pct = (done / total) * 100;
-      bar.style.width = pct + '%';
-      showOpProgress('Uploading…', pct, `${done} / ${total} file${total !== 1 ? 's' : ''}`);
-    } catch (e) {
-      if (e instanceof UploadAbortError || cancelled) break;
-      toast('Upload failed: ' + e.message, 'error');
-    } finally {
-      currentXhr = null;
-    }
-  }
-
-  hideOpProgress();
-  bar.style.width = '100%';
-  setTimeout(() => { bar.style.display = 'none'; bar.style.width = '0%'; }, 600);
-  if (cancelled) {
-    toast('Upload cancelled', 'info');
-  } else if (done > 0) {
+  const results = await Promise.all(tasks.map(runUploadTask));
+  const done = results.filter(r => r === 'done').length;
+  const cancelled = results.filter(r => r === 'cancelled').length;
+  const failed = results.filter(r => r === 'error').length;
+  if (done > 0) {
     toast(done + ' file' + (done === 1 ? '' : 's') + ' uploaded', 'success');
   }
-  loadDirectory(state.currentPath);
+  if (cancelled > 0) {
+    toast(cancelled + ' upload' + (cancelled === 1 ? '' : 's') + ' cancelled', 'info');
+  }
+  if (failed > 0) {
+    toast(failed + ' upload' + (failed === 1 ? '' : 's') + ' failed', 'error');
+  }
+  if (done > 0) {
+    scheduleUploadDirectoryReload();
+  }
+  const maxHistory = 50;
+  if (state.uploadTasks.length > maxHistory) {
+    state.uploadTasks = state.uploadTasks.slice(state.uploadTasks.length - maxHistory);
+    renderUploadManager();
+    updateUploadProgressBar();
+  }
 }
 
 // ─── Mkdir ────────────────────────────────────────────────────────────────────
@@ -1403,6 +1586,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   loadVersion();
+  renderUploadManager();
 
   // Preview navigation buttons (static handlers - direction never changes)
   document.getElementById('preview-prev').onclick = () => navigatePreview(-1);
@@ -1411,6 +1595,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Upload button
   document.getElementById('btn-upload').addEventListener('click', () => {
     document.getElementById('file-input').click();
+  });
+  document.getElementById('upload-expand-btn').addEventListener('click', () => {
+    openModal('modal-uploads');
   });
   document.getElementById('fav-add-btn').addEventListener('click', addFavouriteFromCurrentPath);
 

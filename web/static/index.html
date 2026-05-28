@@ -31,7 +31,19 @@
       <div id="fav-list"></div>
     </div>
 
-    <!-- Operation progress (copy / move / upload) -->
+    <div id="upload-manager">
+      <div class="upload-manager-header">
+        <span>Uploads</span>
+        <div class="upload-manager-actions">
+          <span id="upload-count" style="display:none"></span>
+          <button id="upload-expand-btn" title="Manage uploads">⤢</button>
+        </div>
+      </div>
+      <div id="upload-list-empty">No active uploads</div>
+      <div id="upload-list"></div>
+    </div>
+
+    <!-- Operation progress (copy / move) -->
     <div id="op-progress" style="display:none">
       <div class="op-progress-header">
         <span id="op-progress-label">Operation…</span>
@@ -264,6 +276,23 @@
     <div class="modal-footer">
       <button class="btn" data-close="modal-copy">Cancel</button>
       <button class="btn primary" id="copy-confirm">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upload manager modal -->
+<div class="modal-backdrop" id="modal-uploads">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span class="modal-title">Upload Manager</span>
+      <button class="modal-close" data-close="modal-uploads">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="upload-modal-empty">No active uploads</div>
+      <div id="upload-modal-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-uploads">Close</button>
     </div>
   </div>
 </div>
