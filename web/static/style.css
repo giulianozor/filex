@@ -79,6 +79,23 @@ a:hover { color: var(--accent-hover); }
   letter-spacing: 0.8px;
   color: var(--text-dim);
 }
+.favourites-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.fav-header-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 0 4px;
+  border-radius: 3px;
+  font-size: 16px;
+  line-height: 1;
+}
+.fav-header-btn:hover { color: var(--accent); }
 
 .fav-item {
   display: flex;
@@ -125,7 +142,15 @@ a:hover { color: var(--accent-hover); }
   opacity: 0;
   transition: opacity 0.12s, color 0.12s;
 }
-.fav-item:hover .fav-remove-btn { opacity: 1; }
+.fav-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.fav-item:hover .fav-controls,
+.fav-item.active .fav-controls { opacity: 1; }
 .fav-remove-btn:hover { color: var(--danger); }
 
 .disk-info {

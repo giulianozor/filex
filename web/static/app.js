@@ -1134,19 +1134,10 @@ async function loadDiskInfo() {
 // ─── Favourites ───────────────────────────────────────────────────────────────
 async function loadFavourites() {
   try {
-    const raw = await apiGet('/api/favourites');
-    // Sort alphabetically; keep the home entry (path === '/') always first
-    const favs = (raw || []).sort((a, b) => {
-      const aIsHome = a.path === '/';
-      const bIsHome = b.path === '/';
-      if (aIsHome && !bIsHome) return -1;
-      if (!aIsHome && bIsHome) return 1;
-      return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-    });
-    state.favourites = favs;
+    state.favourites = (await apiGet('/api/favourites')) || [];
     const list = document.getElementById('fav-list');
     list.innerHTML = '';
-    state.favourites.forEach(fav => {
+    state.favourites.forEach((fav, idx) => {
       const el = document.createElement('div');
       el.className = 'fav-item';
       el.dataset.path = fav.path;
@@ -1160,25 +1151,61 @@ async function loadFavourites() {
       nameSpan.className = 'fav-name';
       nameSpan.textContent = fav.name;
 
+      const controls = document.createElement('span');
+      controls.className = 'fav-controls';
+
+      // Move up/down buttons (home stays pinned)
+      const moveUpBtn = document.createElement('button');
+      moveUpBtn.className = 'fav-remove-btn';
+      moveUpBtn.title = 'Move up';
+      moveUpBtn.textContent = '↑';
+      moveUpBtn.disabled = idx <= 1;
+      moveUpBtn.onclick = (e) => {
+        e.stopPropagation();
+        reorderFavourite(idx, -1);
+      };
+      controls.appendChild(moveUpBtn);
+
+      const moveDownBtn = document.createElement('button');
+      moveDownBtn.className = 'fav-remove-btn';
+      moveDownBtn.title = 'Move down';
+      moveDownBtn.textContent = '↓';
+      moveDownBtn.disabled = idx === 0 || idx >= state.favourites.length - 1;
+      moveDownBtn.onclick = (e) => {
+        e.stopPropagation();
+        reorderFavourite(idx, +1);
+      };
+      controls.appendChild(moveDownBtn);
+
+      const editBtn = document.createElement('button');
+      editBtn.className = 'fav-remove-btn';
+      editBtn.title = 'Edit favourite name';
+      editBtn.textContent = '✎';
+      editBtn.onclick = (e) => {
+        e.stopPropagation();
+        editFavourite(idx);
+      };
+      controls.appendChild(editBtn);
+
       // Remove button (hidden until hover)
       const removeBtn = document.createElement('button');
       removeBtn.className = 'fav-remove-btn';
       removeBtn.title = 'Remove from Favourites';
       removeBtn.textContent = '✕';
+      removeBtn.disabled = fav.path === '/';
       removeBtn.onclick = async (e) => {
         e.stopPropagation();
         try {
-          await apiPost('/api/favourites/remove', { path: fav.path });
-          await loadFavourites();
-          renderFileList();
+          await deleteFavourite(idx);
         } catch (err) {
           toast(err.message, 'error');
         }
       };
+      controls.appendChild(removeBtn);
 
       el.appendChild(iconEl);
       el.appendChild(nameSpan);
-      el.appendChild(removeBtn);
+      el.appendChild(controls);
       el.onclick = () => loadDirectory(fav.path);
       list.appendChild(el);
     });
@@ -1188,6 +1215,64 @@ async function loadFavourites() {
 
 function isFavourite(path) {
   return state.favourites.some(f => f.path === path);
+}
+
+async function saveFavourites(favourites) {
+  await apiPost('/api/favourites/update', { favourites });
+  await loadFavourites();
+  renderFileList();
+}
+
+async function reorderFavourite(index, direction) {
+  const target = index + direction;
+  if (index <= 0 || target <= 0 || target >= state.favourites.length) return;
+  const updated = [...state.favourites];
+  [updated[index], updated[target]] = [updated[target], updated[index]];
+  try {
+    await saveFavourites(updated);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function editFavourite(index) {
+  const fav = state.favourites[index];
+  if (!fav) return;
+  const next = window.prompt('Favourite name', fav.name);
+  if (next == null) return;
+  const name = next.trim();
+  if (!name) return toast('Favourite name cannot be empty', 'error');
+  const updated = [...state.favourites];
+  updated[index] = { ...fav, name };
+  try {
+    await saveFavourites(updated);
+  } catch (err) {
+    toast(err.message, 'error');
+  }
+}
+
+async function deleteFavourite(index) {
+  const fav = state.favourites[index];
+  if (!fav || fav.path === '/') return;
+  const updated = state.favourites.filter((_, i) => i !== index);
+  await saveFavourites(updated);
+}
+
+async function addFavouriteFromCurrentPath() {
+  const pathInput = window.prompt('Favourite path', state.currentPath || '/');
+  if (pathInput == null) return;
+  const favPath = pathInput.trim() || '/';
+  const defaultName = favPath === '/' ? 'Home' : basename(favPath);
+  const nameInput = window.prompt('Favourite name', defaultName);
+  if (nameInput == null) return;
+  const favName = nameInput.trim() || defaultName;
+  try {
+    await apiPost('/api/favourites/add', { path: favPath, name: favName });
+    await loadFavourites();
+    renderFileList();
+  } catch (err) {
+    toast(err.message, 'error');
+  }
 }
 
 async function toggleFavourite(path, name, btn) {
@@ -1354,6 +1439,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('btn-upload').addEventListener('click', () => {
     document.getElementById('file-input').click();
   });
+  document.getElementById('fav-add-btn').addEventListener('click', addFavouriteFromCurrentPath);
 
   // Logout button
   const btnLogout = document.getElementById('btn-logout');
