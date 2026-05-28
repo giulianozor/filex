@@ -454,7 +454,7 @@ func TestFavouritesPersistence(t *testing.T) {
 	}
 }
 
-func TestFavouritesUpdatePersistenceAndOrder(t *testing.T) {
+func TestFavouritesUpdatePersistenceAndAlphabeticalOrder(t *testing.T) {
 	dir := t.TempDir()
 	fsys, err := fslib.New(dir)
 	if err != nil {
@@ -502,15 +502,15 @@ func TestFavouritesUpdatePersistenceAndOrder(t *testing.T) {
 	if favs[0].Path != "/" {
 		t.Fatalf("home favourite should stay first, got %+v", favs)
 	}
-	if favs[1].Path != "/media" || favs[2].Name != "Documents" {
-		t.Fatalf("unexpected order/content: %+v", favs)
+	if favs[1].Name != "Documents" || favs[2].Name != "Media" {
+		t.Fatalf("favourites should be alphabetical after home: %+v", favs)
 	}
 
 	saved, err := config.Load(cfgPath)
 	if err != nil {
 		t.Fatalf("reload config: %v", err)
 	}
-	if len(saved.Favourites) != 3 || saved.Favourites[2].Name != "Documents" {
+	if len(saved.Favourites) != 3 || saved.Favourites[1].Name != "Documents" || saved.Favourites[2].Name != "Media" {
 		t.Fatalf("persisted favourites mismatch: %+v", saved.Favourites)
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"path"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -845,6 +846,14 @@ func normalizeFavourites(favs []config.Favourite) []config.Favourite {
 		}
 		out = append(out, config.Favourite{Name: name, Path: p})
 	}
+	sort.SliceStable(out, func(i, j int) bool {
+		ni := strings.ToLower(strings.TrimSpace(out[i].Name))
+		nj := strings.ToLower(strings.TrimSpace(out[j].Name))
+		if ni == nj {
+			return out[i].Path < out[j].Path
+		}
+		return ni < nj
+	})
 	if !hasHome {
 		home = config.Favourite{Name: "Home", Path: "/"}
 	}
