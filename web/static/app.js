@@ -629,6 +629,10 @@ function getUploadTask(id) {
   return state.uploadTasks.find(t => t.id === id);
 }
 
+function removeUploadTask(id) {
+  state.uploadTasks = state.uploadTasks.filter(t => t.id !== id);
+}
+
 function cancelUploadTask(id) {
   const task = getUploadTask(id);
   if (!task || ['done', 'error', 'cancelled'].includes(task.status)) return;
@@ -636,6 +640,7 @@ function cancelUploadTask(id) {
     task.xhr.abort();
   } else {
     task.status = 'cancelled';
+    removeUploadTask(task.id);
   }
   renderUploadManager();
   updateUploadProgressBar();
@@ -786,6 +791,7 @@ function runUploadTask(task) {
         task.status = 'done';
         task.loaded = task.size;
         task.etaSec = 0;
+        removeUploadTask(task.id);
         scheduleUploadDirectoryReload();
       } else {
         task.status = 'error';
@@ -807,6 +813,7 @@ function runUploadTask(task) {
     xhr.onabort = () => {
       task.xhr = null;
       task.status = 'cancelled';
+      removeUploadTask(task.id);
       renderUploadManager();
       updateUploadProgressBar();
       resolve(task.status);
