@@ -162,6 +162,105 @@ a:hover { color: var(--accent-hover); }
 .disk-bar-fill.warn { background: var(--warning); }
 .disk-bar-fill.danger { background: var(--danger); }
 
+/* ── Sidebar upload manager ────────────── */
+#upload-manager {
+  padding: 10px 14px;
+  border-top: 1px solid var(--border);
+  background: var(--card);
+}
+.upload-manager-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 600;
+}
+.upload-manager-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+#upload-count {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+#upload-expand-btn {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  transition: color 0.12s, background 0.12s;
+}
+#upload-expand-btn:hover { color: var(--accent); background: rgba(74,158,255,0.12); }
+#upload-list,
+#upload-modal-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+#upload-list-empty,
+#upload-modal-empty {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.upload-item {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  padding: 8px;
+}
+.upload-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.upload-item-name {
+  font-size: 12px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.upload-item-cancel {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+.upload-item-cancel:hover { color: var(--danger); background: rgba(255,68,68,0.12); }
+.upload-item-track {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.upload-item-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--accent);
+  border-radius: 2px;
+  transition: width 0.2s;
+}
+.upload-item-meta {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.upload-item.done .upload-item-fill { background: var(--success); }
+.upload-item.error .upload-item-fill { background: var(--danger); }
+.upload-item.cancelled .upload-item-fill { background: var(--warning); }
+
 /* ── Sidebar operation progress ──────────── */
 #op-progress {
   padding: 10px 14px;
