@@ -1216,9 +1216,15 @@ async function editFavourite(index) {
   }
 }
 
+function confirmFavouriteRemoval(fav) {
+  if (!fav) return false;
+  return window.confirm(`Remove favourite "${fav.name}"?`);
+}
+
 async function deleteFavourite(index) {
   const fav = state.favourites[index];
   if (!fav || fav.path === '/') return;
+  if (!confirmFavouriteRemoval(fav)) return;
   const updated = state.favourites.filter((_, i) => i !== index);
   await saveFavourites(updated);
 }
@@ -1243,6 +1249,8 @@ async function addFavouriteFromCurrentPath() {
 async function toggleFavourite(path, name, btn) {
   try {
     if (isFavourite(path)) {
+      const fav = state.favourites.find(f => f.path === path) || { path, name };
+      if (!confirmFavouriteRemoval(fav)) return;
       await apiPost('/api/favourites/remove', { path });
     } else {
       await apiPost('/api/favourites/add', { path, name });
