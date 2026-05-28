@@ -235,6 +235,32 @@ func TestHandleFavourites(t *testing.T) {
 	}
 }
 
+func TestHandleFavourites_AddsHomeWhenMissing(t *testing.T) {
+	dir := t.TempDir()
+	fsys, err := fslib.New(dir)
+	if err != nil {
+		t.Fatalf("fs.New: %v", err)
+	}
+	cfg := &config.Config{
+		Host:         "0.0.0.0",
+		Port:         8080,
+		BasePath:     dir,
+		ShowDotfiles: false,
+	}
+	h := New(fsys, cfg, http.Dir(dir), nil, nil, "", "test")
+	rr := doRequest(t, h, http.MethodGet, "/api/favourites", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("status = %d", rr.Code)
+	}
+	var favs []config.Favourite
+	if err := json.NewDecoder(rr.Body).Decode(&favs); err != nil {
+		t.Fatalf("decode favourites: %v", err)
+	}
+	if len(favs) == 0 || favs[0].Path != "/" {
+		t.Fatalf("home favourite missing: %#v", favs)
+	}
+}
+
 func TestHandleInfo(t *testing.T) {
 	h, _ := setupHandler(t)
 	rr := doRequest(t, h, http.MethodGet, "/api/info?path=/", nil)
@@ -425,6 +451,67 @@ func TestFavouritesPersistence(t *testing.T) {
 		if f.Path == "/docs" {
 			t.Error("removed favourite still present in config file")
 		}
+	}
+}
+
+func TestFavouritesUpdatePersistenceAndOrder(t *testing.T) {
+	dir := t.TempDir()
+	fsys, err := fslib.New(dir)
+	if err != nil {
+		t.Fatalf("fs.New: %v", err)
+	}
+	cfgPath := filepath.Join(dir, "config.yaml")
+	initialCfg := &config.Config{
+		Host:         "0.0.0.0",
+		Port:         8080,
+		BasePath:     dir,
+		ShowDotfiles: false,
+		Favourites: []config.Favourite{
+			{Name: "Home", Path: "/"},
+			{Name: "Docs", Path: "/docs"},
+			{Name: "Media", Path: "/media"},
+		},
+	}
+	if err := initialCfg.Save(cfgPath); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	for _, d := range []string{"docs", "media"} {
+		if err := os.Mkdir(filepath.Join(dir, d), 0o755); err != nil {
+			t.Fatalf("mkdir %s: %v", d, err)
+		}
+	}
+	h := New(fsys, initialCfg, http.Dir(dir), nil, nil, cfgPath, "test")
+
+	body := `{"favourites":[{"name":"Media","path":"/media"},{"name":"Documents","path":"/docs"},{"name":"Home","path":"/"}]}`
+	rr := doRequest(t, h, http.MethodPost, "/api/favourites/update", strings.NewReader(body))
+	if rr.Code != http.StatusOK {
+		t.Fatalf("update status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+
+	rr = doRequest(t, h, http.MethodGet, "/api/favourites", nil)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("list status = %d, body = %s", rr.Code, rr.Body.String())
+	}
+	var favs []config.Favourite
+	if err := json.NewDecoder(rr.Body).Decode(&favs); err != nil {
+		t.Fatalf("decode favourites: %v", err)
+	}
+	if len(favs) != 3 {
+		t.Fatalf("len favourites = %d, want 3", len(favs))
+	}
+	if favs[0].Path != "/" {
+		t.Fatalf("home favourite should stay first, got %+v", favs)
+	}
+	if favs[1].Path != "/media" || favs[2].Name != "Documents" {
+		t.Fatalf("unexpected order/content: %+v", favs)
+	}
+
+	saved, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("reload config: %v", err)
+	}
+	if len(saved.Favourites) != 3 || saved.Favourites[2].Name != "Documents" {
+		t.Fatalf("persisted favourites mismatch: %+v", saved.Favourites)
 	}
 }
 
