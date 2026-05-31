@@ -351,17 +351,6 @@ function renderFileList() {
         ));
       }
 
-      actions.appendChild(makeIconBtn(
-        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>`,
-        'Move',
-        () => openMoveModal(entry.path)
-      ));
-
-      actions.appendChild(makeIconBtn(
-        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-        'Copy',
-        () => openCopyModal(entry.path)
-      ));
     }
 
     if (entry.is_dir) {
@@ -385,18 +374,6 @@ function renderFileList() {
         'Download as zip',
         () => downloadZip([entry.path])
       ));
-
-      actions.appendChild(makeIconBtn(
-        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/></svg>`,
-        'Move',
-        () => openMoveModal(entry.path)
-      ));
-
-      actions.appendChild(makeIconBtn(
-        `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>`,
-        'Copy',
-        () => openCopyModal(entry.path)
-      ));
     }
 
     actions.appendChild(makeIconBtn(
@@ -404,14 +381,6 @@ function renderFileList() {
       'Rename',
       () => startInlineRename(entry, nameSpan)
     ));
-
-    const delBtn = makeIconBtn(
-      `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>`,
-      'Delete',
-      () => deleteFiles([entry.path])
-    );
-    delBtn.classList.add('danger');
-    actions.appendChild(delBtn);
 
     tdAct.appendChild(actions);
     tr.appendChild(tdAct);
