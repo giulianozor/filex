@@ -1,0 +1,764 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>filex — file browser</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <path d="M3 3h7l2 3h9a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div id="upload-progress-bar"></div>
+<div id="drop-overlay">⬆ Drop files to upload</div>
+<div id="toast-container" aria-live="polite"></div>
+<div id="sidebar-overlay"></div>
+
+<div id="app">
+  <!-- Sidebar -->
+  <nav id="sidebar">
+    <div class="sidebar-logo">
+      <svg width="20" height="20" aria-hidden="true"><use href="#i-folder"/></svg>
+      filex
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-label favourites-header">
+        <span>Favourites</span>
+        <button id="fav-add-btn" class="fav-header-btn" title="Add current folder to favourites">+</button>
+      </div>
+      <div id="fav-list"></div>
+    </div>
+
+    <div id="upload-manager">
+      <div class="upload-manager-header">
+        <span>Uploads</span>
+        <div class="upload-manager-actions">
+          <span id="upload-count" style="display:none"></span>
+          <button id="upload-expand-btn" title="Manage uploads">⤢</button>
+        </div>
+      </div>
+      <div id="upload-list-empty">No active uploads</div>
+      <div id="upload-list"></div>
+    </div>
+
+    <!-- Operation progress (copy / move) -->
+    <div id="op-progress" style="display:none">
+      <div class="op-progress-header">
+        <span id="op-progress-label">Operation…</span>
+        <button id="op-progress-cancel" title="Cancel operation">✕</button>
+      </div>
+      <div class="op-progress-track">
+        <div id="op-progress-fill"></div>
+      </div>
+      <div id="op-progress-sub"></div>
+    </div>
+
+    <!-- Thumbnail batch progress -->
+    <div id="thumb-progress" style="display:none">
+      <div class="op-progress-header">
+        <span id="thumb-progress-label">Creating Thumbnails</span>
+        <button id="thumb-progress-cancel" title="Cancel">✕</button>
+      </div>
+      <div id="thumb-progress-file" class="thumb-progress-file"></div>
+      <div class="op-progress-track">
+        <div id="thumb-progress-fill" class="op-progress-fill" style="width:0%"></div>
+      </div>
+      <div id="thumb-progress-sub" class="thumb-progress-sub"></div>
+      <div id="thumb-progress-thumb-wrap" class="thumb-progress-thumb-wrap" style="display:none">
+        <div id="thumb-progress-thumb-label" class="thumb-progress-thumb-label"></div>
+        <div class="op-progress-track">
+          <div id="thumb-progress-thumb-fill" class="op-progress-fill" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="disk-info" id="disk-info">
+      <div class="disk-label">
+        <span>Disk Usage</span>
+        <span id="disk-pct">—</span>
+      </div>
+      <div class="disk-bar"><div class="disk-bar-fill" id="disk-bar-fill" style="width:0%"></div></div>
+      <div style="margin-top:5px;display:flex;justify-content:space-between;">
+        <span id="disk-used">—</span>
+        <span id="disk-total">—</span>
+      </div>
+    </div>
+
+    <div class="sidebar-bottom">
+      <button class="btn" id="btn-dotfiles" title="Toggle hidden files">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M20.188 10.934a9 9 0 0 1 0 2.132 9 9 0 0 1-16.376 0 9 9 0 0 1 0-2.132 9 9 0 0 1 16.376 0z"/>
+        </svg>
+        Dotfiles
+      </button>
+      <div id="font-size-ctrl">
+        <button class="btn" id="btn-font-dec" title="Decrease font size">A−</button>
+        <span id="font-size-label">14px</span>
+        <button class="btn" id="btn-font-inc" title="Increase font size">A+</button>
+      </div>
+      <div id="user-info" style="display:none">
+        <div class="user-row">
+          <span class="username" id="username-display"></span>
+        </div>
+        <div class="user-actions">
+          <button class="btn" id="btn-change-password" title="Change login password">Password</button>
+          <button class="btn" id="btn-logout">Logout</button>
+        </div>
+      </div>
+      <div id="sidebar-version" class="sidebar-version"></div>
+    </div>
+  </nav>
+
+  <!-- Main -->
+  <div id="main">
+    <!-- Topbar -->
+    <div id="topbar">
+      <button id="menu-toggle" title="Toggle sidebar">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/>
+        </svg>
+      </button>
+      <div id="breadcrumb"></div>
+      <div id="toolbar">
+        <!-- Transfer -->
+        <button class="btn" id="btn-upload" title="Upload files">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/>
+            <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+          </svg>
+          Upload
+        </button>
+        <input type="file" id="file-input" multiple style="display:none">
+        <button class="btn" id="btn-download-sel" title="Download selected as zip" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+          Download
+        </button>
+
+        <span class="tb-divider"></span>
+
+        <!-- File management -->
+        <button class="btn" id="btn-mkdir" title="New folder">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+            <line x1="12" y1="11" x2="12" y2="17"/><line x1="9" y1="14" x2="15" y2="14"/>
+          </svg>
+          New Folder
+        </button>
+        <button class="btn" id="btn-new-file" title="New file">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="12" y1="18" x2="12" y2="12"/>
+            <line x1="9" y1="15" x2="15" y2="15"/>
+          </svg>
+          New File
+        </button>
+        <button class="btn" id="btn-copy-sel" title="Copy selected" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          Copy
+        </button>
+        <button class="btn" id="btn-move-sel" title="Move selected" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 10 20 15 15 20"/><path d="M4 4v7a4 4 0 0 0 4 4h12"/>
+          </svg>
+          Move
+        </button>
+        <button class="btn danger" id="btn-delete-sel" title="Delete selected" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+            <path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/>
+          </svg>
+          Delete
+        </button>
+
+        <span class="tb-divider"></span>
+
+        <!-- View -->
+        <button class="btn" id="btn-slideshow" title="Start slideshow">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="2" y1="20" x2="22" y2="20"/>
+          </svg>
+          Slideshow
+        </button>
+        <button class="btn" id="btn-thumbnails" title="Create thumbnails for selected videos" style="display:none">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="9" cy="9" r="2"/><polyline points="21 15 16 10 5 21"/>
+          </svg>
+          Thumbnails
+        </button>
+
+        <span class="tb-divider"></span>
+
+        <!-- Utility -->
+        <button class="btn" id="btn-refresh" title="Refresh (F5)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
+    <!-- File area -->
+    <div id="file-area">
+      <div class="filter-bar">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="filter-icon"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="text" id="filter-input" class="filter-input" placeholder="Filter files…" autocomplete="off" spellcheck="false" aria-label="Filter files">
+        <button type="button" id="filter-clear" class="filter-clear" title="Clear filter">✕</button>
+        <button type="button" class="btn-sm" id="btn-select-ext" title="Select files by extension">Ext</button>
+      </div>
+      <table class="file-table" id="file-table">
+        <thead>
+          <tr>
+            <th><input type="checkbox" id="select-all" class="row-check"></th>
+            <th data-sort="name">Name <span class="sort-arrow" id="sort-name"></span></th>
+            <th data-sort="size">Size <span class="sort-arrow" id="sort-size"></span></th>
+            <th data-sort="date">Modified <span class="sort-arrow" id="sort-date"></span></th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="file-body"></tbody>
+      </table>
+      <div class="empty-state" id="empty-state" style="display:none">
+        <svg width="48" height="48" aria-hidden="true"><use href="#i-folder"/></svg>
+        <p>This folder is empty</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Delete confirmation modal -->
+<div class="modal-backdrop" id="modal-delete">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Confirm Delete</span>
+      <button class="modal-close" data-close="modal-delete">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="delete-confirm-msg" style="margin:0 0 10px;font-weight:500;"></p>
+      <ul id="delete-confirm-list" style="margin:0 0 12px;padding-left:18px;max-height:160px;overflow-y:auto;"></ul>
+      <p style="margin:0 0 10px;font-size:12px;color:var(--danger)">This cannot be undone.</p>
+      <div id="delete-extra-warning" style="display:none;margin:0 0 4px;padding:8px;background:#2d1111;border-radius:6px;border:1px solid var(--danger);">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text);">
+          <input type="checkbox" id="delete-confirm-check" style="width:16px;height:16px;accent-color:var(--danger);">
+          <span id="delete-extra-msg"></span>
+        </label>
+      </div>
+      <div id="delete-wipe-option" style="display:none;margin-top:8px;padding:8px;background:#1a1a2e;border-radius:6px;border:1px solid #4a4a8a;">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
+          <input type="checkbox" id="delete-wipe-check" style="width:16px;height:16px;accent-color:#ff9800;">
+          <span>Securely delete (overwrite before removing)</span>
+        </label>
+        <label style="display:flex;align-items:center;gap:8px;margin-top:6px;font-size:12px;color:var(--text-secondary);">
+          <span style="white-space:nowrap;">Wipe method</span>
+          <select id="delete-wipe-method" style="flex:1;min-width:0;background:#111;border:1px solid #4a4a8a;border-radius:4px;padding:3px 6px;color:var(--text);font-size:12px;"></select>
+        </label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-delete">Cancel</button>
+      <button class="btn danger" id="delete-confirm" disabled>Delete</button>
+    </div>
+  </div>
+</div>
+
+<!-- Navigation confirmation modal -->
+<div class="modal-backdrop" id="modal-navigate">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Discard Selection</span>
+      <button class="modal-close" data-close="modal-navigate">✕</button>
+    </div>
+    <div class="modal-body">
+      <p id="navigate-confirm-msg" style="margin:0;font-weight:500;"></p>
+      <p style="margin:4px 0 0;font-size:12px;color:var(--text-secondary);">Navigating will clear your current selection.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-navigate">Cancel</button>
+      <button class="btn danger" id="navigate-confirm">Discard & Navigate</button>
+    </div>
+  </div>
+</div>
+
+<!-- Change password modal -->
+<div class="modal-backdrop" id="modal-password">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Change Password</span>
+      <button class="modal-close" data-close="modal-password">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Current password</label>
+        <input type="password" class="form-input" id="pwd-current" autocomplete="current-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">New password</label>
+        <input type="password" class="form-input" id="pwd-new" autocomplete="new-password">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirm new password</label>
+        <input type="password" class="form-input" id="pwd-new2" autocomplete="new-password">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-password">Cancel</button>
+      <button class="btn primary" id="pwd-update">Update Password</button>
+    </div>
+  </div>
+</div>
+
+<!-- Mkdir modal -->
+<div class="modal-backdrop" id="modal-mkdir">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">New Folder</span>
+      <button class="modal-close" data-close="modal-mkdir">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Folder name</label>
+        <input type="text" class="form-input" id="mkdir-name" placeholder="my-folder" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-mkdir">Cancel</button>
+      <button class="btn primary" id="mkdir-confirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- New file modal -->
+<div class="modal-backdrop" id="modal-new-file">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">New File</span>
+      <button class="modal-close" data-close="modal-new-file">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">File name</label>
+        <input type="text" class="form-input" id="new-file-name" placeholder="my-file.txt" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-new-file">Cancel</button>
+      <button class="btn primary" id="new-file-confirm">Create</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move modal -->
+<div class="modal-backdrop" id="modal-move">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Move To</span>
+      <button class="modal-close" data-close="modal-move">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Destination path</label>
+        <input type="text" class="form-input" id="move-dst" placeholder="/destination/folder" autocomplete="off">
+      </div>
+      <div class="modal-favs" id="move-favs">
+        <div class="modal-favs-label">Favourites</div>
+        <div class="modal-favs-list" id="move-favs-list"></div>
+      </div>
+      <div class="folder-browser">
+        <div class="folder-browser-nav">
+          <button class="btn folder-browser-up" id="move-browser-up" title="Go up one level">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            Up
+          </button>
+          <span class="folder-browser-crumb" id="move-browser-crumb"></span>
+        </div>
+        <div class="folder-browser-list" id="move-browser-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-move">Cancel</button>
+      <button class="btn primary" id="move-confirm">Move</button>
+    </div>
+  </div>
+</div>
+
+<!-- Copy modal -->
+<div class="modal-backdrop" id="modal-copy">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Copy To</span>
+      <button class="modal-close" data-close="modal-copy">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Destination path</label>
+        <input type="text" class="form-input" id="copy-dst" placeholder="/destination/folder" autocomplete="off">
+      </div>
+      <div class="modal-favs" id="copy-favs">
+        <div class="modal-favs-label">Favourites</div>
+        <div class="modal-favs-list" id="copy-favs-list"></div>
+      </div>
+      <div class="folder-browser">
+        <div class="folder-browser-nav">
+          <button class="btn folder-browser-up" id="copy-browser-up" title="Go up one level">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+            Up
+          </button>
+          <span class="folder-browser-crumb" id="copy-browser-crumb"></span>
+        </div>
+        <div class="folder-browser-list" id="copy-browser-list"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-copy">Cancel</button>
+      <button class="btn primary" id="copy-confirm">Copy</button>
+    </div>
+  </div>
+</div>
+
+<!-- Conflict resolution modal -->
+<div class="modal-backdrop" id="modal-conflict">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <span class="modal-title">File Conflict</span>
+      <button class="modal-close" id="conflict-close">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px">
+      <div id="conflict-message" style="margin-bottom:16px;font-size:14px;color:var(--text);line-height:1.5"></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="conflict-cancel">Cancel</button>
+        <button class="btn" id="conflict-overwrite" style="background:var(--danger);color:#fff;border-color:var(--danger)">Overwrite</button>
+        <button class="btn primary" id="conflict-rename" style="margin-left:auto">Rename new file</button>
+      </div>
+      <label id="conflict-apply-all-label" style="display:flex;align-items:center;gap:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--border);cursor:pointer;font-size:13px;color:var(--text)">
+        <input type="checkbox" id="conflict-apply-all" style="width:16px;height:16px">
+        Apply to all subsequent conflicts
+      </label>
+    </div>
+  </div>
+</div>
+
+<!-- Upload manager modal -->
+<div class="modal-backdrop" id="modal-uploads">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span class="modal-title">Upload Manager</span>
+      <button class="modal-close" data-close="modal-uploads">✕</button>
+    </div>
+    <div class="modal-body">
+      <div id="upload-modal-empty">No active uploads</div>
+      <div id="upload-modal-list"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-uploads">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Editor modal -->
+<div class="modal-backdrop" id="modal-editor">
+  <div class="modal fullscreen wide">
+    <div class="modal-header">
+      <span class="modal-title" id="editor-title">Editor</span>
+      <button class="modal-close" data-close="modal-editor">✕</button>
+    </div>
+    <div class="modal-body">
+      <textarea id="editor-textarea" spellcheck="false"></textarea>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-editor">Cancel</button>
+      <button class="btn primary" id="editor-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Preview modal -->
+<div class="modal-backdrop" id="modal-preview">
+  <div class="modal wide">
+    <div class="modal-header">
+      <span class="modal-title" id="preview-title">Preview</span>
+      <button class="modal-close" data-close="modal-preview">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="preview-container" id="preview-container"></div>
+    </div>
+    <div class="modal-footer">
+      <div class="preview-nav">
+        <button class="btn" id="preview-prev">◀ Prev</button>
+        <button class="btn" id="preview-next">Next ▶</button>
+      </div>
+      <a class="btn primary" id="preview-download" href="#" download>Download</a>
+      <button class="btn" id="preview-edit" style="display:none">Edit</button>
+      <button class="btn" id="preview-move">Move</button>
+      <button class="btn" id="preview-copy">Copy</button>
+      <button class="btn danger" id="preview-delete">Delete</button>
+      <button class="btn" data-close="modal-preview">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unsupported file prompt -->
+<div class="modal-backdrop" id="modal-unsupported">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title">Open File</span>
+      <button class="modal-close" data-close="modal-unsupported">✕</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0 0 6px;">Unrecognized file type. How do you want to open this file?</p>
+      <p id="unsupported-filename" style="margin:0;font-size:13px;color:var(--text-dim);font-family:monospace;"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="unsupported-cancel" data-close="modal-unsupported">Cancel</button>
+      <button class="btn" id="unsupported-download">Download</button>
+      <button class="btn primary" id="unsupported-text">Open as text</button>
+    </div>
+  </div>
+</div>
+
+<!-- Video editor modal -->
+<div class="modal-backdrop" id="modal-video-editor">
+  <div class="modal fullscreen wide">
+    <div class="modal-header">
+      <span class="modal-title" id="video-editor-title">Video Editor</span>
+      <button class="modal-close" data-close="modal-video-editor">✕</button>
+    </div>
+    <div class="modal-body video-editor-body">
+      <div class="video-editor-layout">
+        <div class="video-editor-player">
+          <video id="video-editor-video" controls></video>
+          <button class="btn" id="video-editor-reload-video" style="display:none;margin-top:6px">↻ Reload</button>
+        </div>
+        <div class="video-editor-sidebar">
+          <div class="video-editor-controls">
+            <div class="video-editor-time-display">
+              <span>Current: <strong id="video-editor-current-time">00:00.000</strong></span>
+            </div>
+            <div class="video-editor-buttons">
+              <button class="btn" id="video-editor-set-start" disabled>Set Start</button>
+              <button class="btn" id="video-editor-set-end" disabled>Set End</button>
+              <button class="btn primary" id="video-editor-add-interval" disabled>Add Interval</button>
+            </div>
+            <div class="video-editor-selection">
+              <span>Start: <strong id="video-editor-start-time">—</strong></span>
+              <span>End: <strong id="video-editor-end-time">—</strong></span>
+            </div>
+          </div>
+          <div class="video-editor-intervals">
+            <h4>Intervals</h4>
+            <div class="video-editor-intervals-scroll">
+              <table class="video-editor-table" id="video-editor-table">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Start</th>
+                    <th>End</th>
+                    <th>Duration</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="video-editor-table-body"></tbody>
+              </table>
+              <div class="video-editor-total" id="video-editor-total" style="display:none;font-size:11px;color:var(--text-dim);padding:4px 6px;border-top:1px solid var(--border);text-align:right"></div>
+              <div class="video-editor-empty" id="video-editor-empty">No intervals added</div>
+            </div>
+          </div>
+          <div class="video-editor-actions">
+            <button class="btn primary" id="video-editor-extract">Extract</button>
+          </div>
+        </div>
+      </div>
+      <div class="video-editor-timeline-container">
+        <div class="video-editor-timeline-scroll" id="video-editor-timeline">
+          <div class="video-editor-timeline-loading">Loading thumbnails...</div>
+        </div>
+        <div class="video-editor-timeline-nav" id="video-editor-timeline-nav"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-video-editor">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Extract confirmation modal -->
+<div class="modal-backdrop" id="modal-extract-confirm">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <span class="modal-title">Extract segments</span>
+      <button class="modal-close" data-close="modal-extract-confirm">✕</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px">
+      <div style="margin-bottom:16px;font-size:14px;color:var(--text)">Extract the selected segments?</div>
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px;cursor:pointer;font-size:13px;color:var(--text)">
+        <input type="checkbox" id="extract-confirm-clear-tmp" checked>
+        Clear tmp files
+      </label>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text)">
+        <input type="checkbox" id="extract-confirm-close-editor" checked>
+        Close editor window when finished
+      </label>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-extract-confirm">Cancel</button>
+      <button class="btn primary" id="extract-confirm-ok">Extract</button>
+    </div>
+  </div>
+</div>
+
+<!-- Extract progress modal -->
+<div class="modal-backdrop" id="modal-extract-progress">
+  <div class="modal">
+    <div class="modal-header">
+      <span class="modal-title" id="extract-progress-title">Extracting segments</span>
+      <button class="modal-close" data-close="modal-extract-progress">✕</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:24px">
+      <div id="extract-progress-status" style="margin-bottom:12px;font-size:14px;color:var(--text)">Starting...</div>
+      <div id="extract-progress-track" style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:8px">
+        <div id="extract-progress-fill" style="width:0%;height:100%;background:var(--accent);border-radius:3px;transition:width 0.3s"></div>
+      </div>
+      <div id="extract-progress-percent" style="font-size:12px;color:var(--text-dim)">0%</div>
+      <div id="extract-progress-commands-wrap" style="margin-top:12px;display:none">
+        <div id="extract-progress-commands-toggle" style="font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none;padding:4px 0">&#9654; Commands</div>
+        <div id="extract-progress-command" style="font-size:11px;color:var(--text-dim);word-break:break-all;text-align:left;display:none">
+          <code id="extract-progress-command-text" style="background:var(--bg);padding:6px 8px;border-radius:4px;display:block;white-space:pre-wrap;overflow-x:auto;max-height:300px;font-size:10px;line-height:1.4"></code>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer" id="extract-progress-footer">
+      <button class="btn" id="extract-progress-close" data-close="modal-extract-progress">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archive extract confirmation modal -->
+<div class="modal-backdrop" id="modal-archive-extract">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <span class="modal-title" id="archive-extract-title">Extract Archive</span>
+      <button class="modal-close" data-close="modal-archive-extract">&#10005;</button>
+    </div>
+    <div class="modal-body" style="padding:20px 24px">
+      <div style="margin-bottom:14px;font-size:14px;color:var(--text)">
+        Extract <strong id="archive-extract-filename"></strong>?
+      </div>
+      <div class="form-group">
+        <label class="form-label">Password (optional)</label>
+        <input type="password" class="form-input" id="archive-extract-password" placeholder="Password" autocomplete="off">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" data-close="modal-archive-extract">Cancel</button>
+      <button class="btn primary" id="archive-extract-confirm">Extract</button>
+    </div>
+  </div>
+</div>
+
+<!-- Archive extract progress modal -->
+<div class="modal-backdrop" id="modal-archive-progress">
+  <div class="modal wide" style="max-width:660px">
+    <div class="modal-header">
+      <span class="modal-title" id="archive-progress-title">Extracting</span>
+      <button class="modal-close" data-close="modal-archive-progress">&#10005;</button>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:20px 24px">
+      <div id="archive-progress-status" style="margin-bottom:10px;font-size:14px;color:var(--text)">Starting extraction...</div>
+      <div id="archive-progress-track" style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:6px">
+        <div id="archive-progress-fill" class="indeterminate" style="width:100%;height:100%;background:var(--accent);border-radius:3px"></div>
+      </div>
+      <div id="archive-progress-percent" style="font-size:12px;color:var(--text-dim);margin-bottom:12px">Extracting...</div>
+      <div id="archive-progress-output-wrap" style="display:none;text-align:left;margin-top:8px">
+        <div id="archive-progress-output-toggle" style="font-size:11px;color:var(--text-dim);cursor:pointer;user-select:none;padding:4px 0">&#9654; Output</div>
+        <pre id="archive-progress-output" style="display:none;background:var(--bg);padding:8px 10px;border-radius:4px;font-size:11px;line-height:1.4;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;margin:0;color:var(--text-dim);text-align:left"></pre>
+      </div>
+    </div>
+    <div class="modal-footer" id="archive-progress-footer">
+      <button class="btn" id="archive-progress-close" data-close="modal-archive-progress">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Operation progress modal (move/copy/delete) -->
+<div class="modal-backdrop" id="modal-op-progress">
+  <div class="modal" style="width:380px">
+    <div class="modal-header">
+      <span class="modal-title" id="op-progress-modal-title">Operation</span>
+    </div>
+    <div class="modal-body" style="text-align:center;padding:20px 24px">
+      <div id="op-progress-modal-status" style="margin-bottom:10px;font-size:14px;color:var(--text)">Starting...</div>
+      <div style="height:6px;background:var(--border);border-radius:3px;overflow:hidden;margin-bottom:6px">
+        <div id="op-progress-modal-fill" class="indeterminate" style="width:100%;height:100%;background:var(--accent);border-radius:3px"></div>
+      </div>
+      <div id="op-progress-modal-percent" style="font-size:12px;color:var(--text-dim)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn" id="op-progress-modal-hide">Hide</button>
+      <button class="btn danger" id="op-progress-modal-cancel">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<div id="slideshow-overlay">
+  <div id="slideshow-container">
+    <img id="slideshow-img" src="" alt="">
+  </div>
+  <div id="slideshow-controls">
+    <span id="slideshow-counter"></span>
+    <span id="slideshow-controls-center">
+      <label id="slideshow-speed-label">Speed:
+        <button class="btn btn-sm" id="slideshow-speed-down" title="Slower">−</button>
+        <span id="slideshow-speed-val">1.0s</span>
+        <button class="btn btn-sm" id="slideshow-speed-up" title="Faster">+</button>
+      </label>
+      <label id="slideshow-zoom-label">Zoom:
+        <button class="btn btn-sm" id="slideshow-zoom-out" title="Zoom out">−</button>
+        <span id="slideshow-zoom-val">100%</span>
+        <button class="btn btn-sm" id="slideshow-zoom-in" title="Zoom in">+</button>
+        <button class="btn btn-sm" id="slideshow-zoom-reset" title="Reset zoom">⟲</button>
+      </label>
+    </span>
+    <span id="slideshow-status">▶</span>
+    <button class="btn" id="slideshow-exit">Exit</button>
+  </div>
+</div>
+
+<!-- Select by extension modal -->
+<div class="modal-backdrop" id="modal-select-ext">
+  <div class="modal" style="width:320px">
+    <div class="modal-header">
+      <span class="modal-title">Select by Extension</span>
+      <button class="modal-close" data-close="modal-select-ext">✕</button>
+    </div>
+    <div class="modal-body" style="padding:16px 20px">
+      <div style="margin-bottom:10px;font-size:13px;color:var(--text-dim)">Choose extensions:</div>
+      <div id="ext-list" style="max-height:220px;overflow-y:auto;margin-bottom:10px"></div>
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <button class="btn btn-sm" id="ext-select-all-exts">All</button>
+        <button class="btn btn-sm" id="ext-deselect-all-exts">None</button>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;border-top:1px solid var(--border);padding-top:12px">
+        <button class="btn primary" id="ext-select-btn">Select checked</button>
+        <button class="btn danger" id="ext-deselect-btn">Deselect checked</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>

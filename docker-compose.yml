@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  filex:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./config.yaml:/etc/filex/config.yaml:ro
+      - ./prefs.yaml:/root/.config/filex.yaml
+    restart: unless-stopped
+    environment:
+      - TZ=UTC

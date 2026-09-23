@@ -1,0 +1,36 @@
+host: "0.0.0.0"
+port: 8080
+show_dotfiles: false
+
+# Global base_path is used when no users are defined (no-auth mode).
+# base_path: "/data"
+# protected_paths:
+#   - "/important"
+#   - "/important/keep.txt"
+
+# Users — when defined, login is required. config.yaml keeps the serving and
+# per-user DIRECTORY settings only (base_path jail, uid/gid). Per-user
+# preferences — the password hash, show_dotfiles, favourites, protected_paths
+# and the remembered secure-delete (wipe) settings — are stored in each user's
+# own preferences file (~/.config/filex.yaml under that user's home from the
+# account database, never the home of the root daemon) so this file can stay
+# read-only.
+#
+# Generate a password hash with:
+#   bin/filex-passwd -user admin        (writes ~/.config/filex.yaml)
+# Or print one without writing:   filex-passwd mypassword
+# thumbnail_parallelism: number of parallel ffmpeg processes for thumbnail generation.
+# 0 = auto (half the number of available CPU threads). Minimum 1.
+# thumbnail_parallelism: 0
+# thumbnail_threads: threads per ffmpeg process for thumbnail decoding; 0 = single-threaded (safe default).
+# thumbnail_threads: 0
+# thumbnail_hardware_accel: hardware acceleration for thumbnail decoding.
+# "auto" = use QSV if available, "qsv" = force QSV, "off" = software decoding only.
+# thumbnail_hardware_accel: auto
+
+users:
+  - username: "admin"
+    base_path: "/data"
+    # uid and gid: omit (or comment out) to skip chown; set to 0 for root, or any valid UID/GID.
+    # uid: 1000
+    # gid: 1000
