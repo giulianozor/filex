@@ -1900,6 +1900,8 @@ func mimeHint(name string, isDir bool) string {
 		return "audio"
 	case ".pdf":
 		return "pdf"
+	case ".epub":
+		return "epub"
 	case ".zip", ".tar", ".gz", ".bz2", ".xz", ".rar", ".7z", ".iso":
 		return "archive"
 	case ".go", ".py", ".js", ".ts", ".html", ".css", ".json",

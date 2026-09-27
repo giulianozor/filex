@@ -511,6 +511,49 @@
   </div>
 </div>
 
+<!-- EPUB reader modal -->
+<div class="modal-backdrop" id="modal-epub">
+  <div class="modal fullscreen wide">
+    <div class="modal-header">
+      <span class="modal-title" id="epub-title">Reader</span>
+      <div class="epub-head-actions">
+        <button class="btn" id="epub-toc-toggle">Contents</button>
+        <button class="btn" id="epub-font-decrease" title="Smaller text">A&minus;</button>
+        <button class="btn" id="epub-font-increase" title="Larger text">A+</button>
+        <button class="btn" id="epub-theme">Theme: Book</button>
+      </div>
+      <button class="modal-close" data-close="modal-epub">✕</button>
+    </div>
+    <div class="modal-body epub-body">
+      <nav class="epub-toc" id="epub-toc" hidden>
+        <div class="epub-toc-list" id="epub-toc-list"></div>
+      </nav>
+      <div class="epub-main">
+        <div class="epub-meta" id="epub-meta"></div>
+        <div class="epub-page" id="epub-page">
+          <iframe
+            id="epub-frame"
+            class="epub-frame"
+            title="Book content"
+            referrerpolicy="no-referrer"
+            sandbox="allow-same-origin"></iframe>
+        </div>
+        <p class="epub-error" id="epub-error" hidden></p>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <div class="preview-nav">
+        <button class="btn" id="epub-prev">&#9664; Prev</button>
+        <select class="epub-chapters" id="epub-chapters" title="Chapter"></select>
+        <button class="btn" id="epub-next">Next &#9654;</button>
+      </div>
+      <span class="epub-progress" id="epub-progress"></span>
+      <a class="btn primary" id="epub-download" href="#" download>Download</a>
+      <button class="btn" data-close="modal-epub">Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- Unsupported file prompt -->
 <div class="modal-backdrop" id="modal-unsupported">
   <div class="modal">

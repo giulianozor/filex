@@ -24,6 +24,8 @@ tags:
     description: Video thumbnails, keyframe snapping and clip extraction
   - name: archives
     description: Archive inspection and extraction
+  - name: epub
+    description: EPUB book manifest and content
 x-tagGroups:
   - name: Auth
     tags:
@@ -46,6 +48,9 @@ x-tagGroups:
   - name: Archives
     tags:
       - archives
+  - name: Books
+    tags:
+      - epub
 security:
   - cookieAuth: []
 paths:
@@ -210,6 +215,60 @@ paths:
           $ref: '#/components/responses/BadRequest'
         "404":
           $ref: '#/components/responses/NotFound'
+  /api/epub:
+    get:
+      tags:
+        - epub
+      summary: Read an EPUB book's manifest
+      description: Parses the book and returns its metadata, its reading order and its table of contents. Every document and the cover image are addressed by a URL for /api/epub/resource, and table-of-contents entries point at an index into `docs`, so a client never has to resolve a path inside the archive. A file that is not a readable book is reported as 422.
+      operationId: handleEpub
+      parameters:
+        - $ref: '#/components/parameters/Path'
+      responses:
+        "200":
+          description: Book manifest
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EpubBook'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "413":
+          $ref: '#/components/responses/PayloadTooLarge'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
+  /api/epub/resource:
+    get:
+      tags:
+        - epub
+      summary: Serve one entry of an EPUB book
+      description: 'An HTML or XHTML entry is served rewritten: its references are pointed back at this endpoint, its stylesheets are inlined, and script, frames, plugins and meta-refresh are removed. The response carries a `Content-Security-Policy` that denies it script, framing, form submission and any network access beyond this same origin. Any other entry (image, stylesheet, font, audio) is served as the media type the package document declared. Nothing outside the book is reachable.'
+      operationId: handleEpubResource
+      parameters:
+        - $ref: '#/components/parameters/Path'
+        - $ref: '#/components/parameters/Entry'
+      responses:
+        "200":
+          description: Rewritten content document or raw resource
+          content:
+            application/octet-stream:
+              schema:
+                format: binary
+                type: string
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "413":
+          $ref: '#/components/responses/PayloadTooLarge'
+        "422":
+          $ref: '#/components/responses/UnprocessableEntity'
   /api/extract-archive:
     post:
       tags:
@@ -936,6 +995,13 @@ components:
       name: filex_session
       type: apiKey
   parameters:
+    Entry:
+      description: Name of one entry inside the EPUB archive, e.g. `OEBPS/ch1.xhtml`
+      in: query
+      name: entry
+      required: true
+      schema:
+        type: string
     Id:
       description: 1-based thumbnail frame number
       in: query
@@ -981,6 +1047,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/OK'
+    PayloadTooLarge:
+      description: Request or resource exceeds the server's size limit
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     ServerError:
       description: Internal server error
       content:
@@ -989,6 +1061,12 @@ components:
             $ref: '#/components/schemas/Error'
     Unauthorized:
       description: Missing or invalid credentials/session
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    UnprocessableEntity:
+      description: Content is well-formed but cannot be interpreted
       content:
         application/json:
           schema:
@@ -1148,6 +1226,70 @@ components:
         - free
         - used
         - used_pct
+      type: object
+    EpubBook:
+      properties:
+        author:
+          type: string
+        cover:
+          type: string
+        date:
+          type: string
+        docs:
+          items:
+            $ref: '#/components/schemas/EpubDocument'
+          type: array
+        language:
+          type: string
+        publisher:
+          type: string
+        title:
+          type: string
+        toc:
+          items:
+            $ref: '#/components/schemas/EpubNavItem'
+          type: array
+      required:
+        - title
+        - author
+        - language
+        - publisher
+        - date
+        - docs
+        - toc
+      type: object
+    EpubDocument:
+      properties:
+        media_type:
+          type: string
+        path:
+          type: string
+        title:
+          type: string
+        url:
+          type: string
+      required:
+        - path
+        - title
+        - media_type
+        - url
+      type: object
+    EpubNavItem:
+      properties:
+        children:
+          items:
+            $ref: '#/components/schemas/EpubNavItem'
+          type: array
+        doc:
+          description: Index into EpubBook.docs, or -1 for a heading that only groups children
+          type: integer
+        fragment:
+          type: string
+        title:
+          type: string
+      required:
+        - title
+        - doc
       type: object
     Error:
       properties:

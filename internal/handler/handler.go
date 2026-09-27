@@ -491,6 +491,8 @@ var apiRouteCatalog = []apiRoute{
 	{method: http.MethodGet, pattern: "/api/video-batch-status", name: "handleVideoBatchStatus"},
 	{method: http.MethodPost, pattern: "/api/video-batch-thumbnails", name: "handleVideoBatchThumbnails", bodyLimit: maxJSONBodyBytes},
 	{method: http.MethodPost, pattern: "/api/extract-archive", name: "handleExtractArchive", bodyLimit: maxJSONBodyBytes},
+	{method: http.MethodGet, pattern: "/api/epub", name: "handleEpub"},
+	{method: http.MethodGet, pattern: "/api/epub/resource", name: "handleEpubResource"},
 }
 
 // handlerFor resolves a catalog handler name to the bound method. The explicit
@@ -582,6 +584,10 @@ func (h *Handler) handlerFor(name string) http.HandlerFunc {
 		return h.handleVideoBatchThumbnails
 	case "handleExtractArchive":
 		return h.handleExtractArchive
+	case "handleEpub":
+		return h.handleEpub
+	case "handleEpubResource":
+		return h.handleEpubResource
 	}
 	panic("handlerFor: unknown route handler " + name)
 }

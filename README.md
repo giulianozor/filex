@@ -9,6 +9,7 @@ A fast, self-hosted web-based file browser with a dark theme, built in Go. Zero 
 - 📥 File download
 - ✏️ In-browser text editor
 - 🖼️ Inline previews for images, video, audio, and text files
+- 📖 EPUB reader — table of contents, chapter paging, text size and theme controls, and per-book position memory
 - 🎬 Video editor — thumbnail timeline with navigable frames, set start/end marks, and extract multiple intervals as clips
 - ✂️ Lossless clipping — intervals are cut and concatenated with ffmpeg stream copy (`-c copy`, no re-encoding), streamed with live progress
 - ⏱️ Per-video interval presets — start/end marks are saved next to the video and restored when you reopen it

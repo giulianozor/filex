@@ -169,6 +169,10 @@ func errorStatus(name string) string {
 		return "404"
 	case "Conflict":
 		return "409"
+	case "PayloadTooLarge":
+		return "413"
+	case "UnprocessableEntity":
+		return "422"
 	case "ServerError":
 		return "500"
 	}
@@ -214,6 +218,7 @@ func buildDocument(routes []handler.APIRoute) document {
 			{Name: "config", Description: "Server configuration"},
 			{Name: "video", Description: "Video thumbnails, keyframe snapping and clip extraction"},
 			{Name: "archives", Description: "Archive inspection and extraction"},
+			{Name: "epub", Description: "EPUB book manifest and content"},
 		},
 		TagGroups: []tagGroup{
 			{Name: "Auth", Tags: []string{"auth"}},
@@ -223,6 +228,7 @@ func buildDocument(routes []handler.APIRoute) document {
 			{Name: "Configuration", Tags: []string{"config"}},
 			{Name: "Video editing", Tags: []string{"video"}},
 			{Name: "Archives", Tags: []string{"archives"}},
+			{Name: "Books", Tags: []string{"epub"}},
 		},
 		Security:   []map[string][]string{{"cookieAuth": {}}},
 		Paths:      paths,
@@ -273,15 +279,24 @@ func buildComponents() components {
 				"description": "1-based thumbnail frame number",
 				"schema":      map[string]any{"type": "integer", "minimum": 1},
 			},
+			"Entry": map[string]any{
+				"name":        "entry",
+				"in":          "query",
+				"required":    true,
+				"description": "Name of one entry inside the EPUB archive, e.g. `OEBPS/ch1.xhtml`",
+				"schema":      map[string]any{"type": "string"},
+			},
 		},
 		Responses: map[string]any{
-			"OK":           response{Description: "Success", Content: jsonContent(schemaRef("OK"))},
-			"BadRequest":   errorResponse("Invalid or rejected request"),
-			"Unauthorized": errorResponse("Missing or invalid credentials/session"),
-			"Forbidden":    errorResponse("Resource exists but access is denied"),
-			"NotFound":     errorResponse("Resource not found"),
-			"Conflict":     errorResponse("Conflict with concurrent state"),
-			"ServerError":  errorResponse("Internal server error"),
+			"OK":                  response{Description: "Success", Content: jsonContent(schemaRef("OK"))},
+			"BadRequest":          errorResponse("Invalid or rejected request"),
+			"Unauthorized":        errorResponse("Missing or invalid credentials/session"),
+			"Forbidden":           errorResponse("Resource exists but access is denied"),
+			"NotFound":            errorResponse("Resource not found"),
+			"Conflict":            errorResponse("Conflict with concurrent state"),
+			"PayloadTooLarge":     errorResponse("Request or resource exceeds the server's size limit"),
+			"UnprocessableEntity": errorResponse("Content is well-formed but cannot be interpreted"),
+			"ServerError":         errorResponse("Internal server error"),
 		},
 		Schemas: buildSchemas(),
 	}
@@ -547,6 +562,28 @@ func buildSchemas() map[string]any {
 				schemaRef("NDJSONError"),
 			},
 		},
+		"EpubDocument": obj([]string{"path", "title", "media_type", "url"}, map[string]any{
+			"path":       str(),
+			"title":      str(),
+			"media_type": str(),
+			"url":        str(),
+		}),
+		"EpubNavItem": obj([]string{"title", "doc"}, map[string]any{
+			"title":    str(),
+			"doc":      map[string]any{"type": "integer", "description": "Index into EpubBook.docs, or -1 for a heading that only groups children"},
+			"fragment": str(),
+			"children": arr(schemaRef("EpubNavItem")),
+		}),
+		"EpubBook": obj([]string{"title", "author", "language", "publisher", "date", "docs", "toc"}, map[string]any{
+			"title":     str(),
+			"author":    str(),
+			"language":  str(),
+			"publisher": str(),
+			"date":      str(),
+			"cover":     str(),
+			"docs":      arr(schemaRef("EpubDocument")),
+			"toc":       arr(schemaRef("EpubNavItem")),
+		}),
 		"NDJSONStream": map[string]any{
 			"type":        "object",
 			"description": "One NDJSON event per line (Content-Type application/x-ndjson)",
@@ -930,6 +967,31 @@ func operationFor(r handler.APIRoute) operation {
 		op.Responses = withErrorResponses(map[string]any{
 			"200": response{Description: "NDJSON progress stream ending in a result with the destination", Content: ndjsonContent()},
 		}, "BadRequest", "NotFound")
+
+	case "handleEpub":
+		op.Tags = []string{"epub"}
+		op.Summary = "Read an EPUB book's manifest"
+		op.Description = "Parses the book and returns its metadata, its reading order and its table of " +
+			"contents. Every document and the cover image are addressed by a URL for /api/epub/resource, and " +
+			"table-of-contents entries point at an index into `docs`, so a client never has to resolve a path " +
+			"inside the archive. A file that is not a readable book is reported as 422."
+		op.Parameters = []any{paramRef("Path")}
+		op.Responses = withErrorResponses(map[string]any{
+			"200": response{Description: "Book manifest", Content: jsonContent(schemaRef("EpubBook"))},
+		}, "BadRequest", "Forbidden", "NotFound", "PayloadTooLarge", "UnprocessableEntity")
+
+	case "handleEpubResource":
+		op.Tags = []string{"epub"}
+		op.Summary = "Serve one entry of an EPUB book"
+		op.Description = "An HTML or XHTML entry is served rewritten: its references are pointed back at this " +
+			"endpoint, its stylesheets are inlined, and script, frames, plugins and meta-refresh are removed. " +
+			"The response carries a `Content-Security-Policy` that denies it script, framing, form submission " +
+			"and any network access beyond this same origin. Any other entry (image, stylesheet, font, audio) " +
+			"is served as the media type the package document declared. Nothing outside the book is reachable."
+		op.Parameters = []any{paramRef("Path"), paramRef("Entry")}
+		op.Responses = withErrorResponses(map[string]any{
+			"200": response{Description: "Rewritten content document or raw resource", Content: binaryContent("application/octet-stream")},
+		}, "BadRequest", "Forbidden", "NotFound", "PayloadTooLarge", "UnprocessableEntity")
 	}
 
 	return op

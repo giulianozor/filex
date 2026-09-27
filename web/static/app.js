@@ -60,6 +60,7 @@ const ICONS = {
   audio: `<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff9800" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>`,
   pdf:   `<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#f44336" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>`,
   archive:`<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#795548" stroke-width="2"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>`,
+  epub:  `<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#26a69a" stroke-width="2"><path d="M2 4h6a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H2z"/><path d="M22 4h-6a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h7z"/><line x1="12" y1="7" x2="12" y2="20"/></svg>`,
   code:  `<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#00bcd4" stroke-width="2"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>`,
   text:  `<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#9e9e9e" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>`,
   file:  `<svg class="file-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#757575" stroke-width="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>`,
@@ -2196,7 +2197,7 @@ function renderMarkdown(text) {
 }
 
 // ─── Preview ──────────────────────────────────────────────────────────────────
-const PREVIEWABLE_HINTS = new Set(['image', 'video', 'audio', 'text', 'code', 'pdf', 'markdown']);
+const PREVIEWABLE_HINTS = new Set(['image', 'video', 'audio', 'text', 'code', 'pdf', 'markdown', 'epub']);
 
 function buildPreviewList() {
   return getFilteredEntries().filter(e => !e.is_dir && PREVIEWABLE_HINTS.has(e.mime_hint));
@@ -2350,6 +2351,10 @@ img.src = downloadUrl(entry.path);
     } catch (e) {
       toastError(e, 'Cannot preview');
     }
+  } else if (hint === 'epub') {
+    // The reader is a modal of its own, so step aside from the preview first.
+    closeModal('modal-preview');
+    openEpubReader(entry);
   } else if (hint === 'archive') {
     if (canExtractArchive(entry)) {
       const extractBtn = document.createElement('button');
@@ -3608,6 +3613,11 @@ function closeModal(id, manual = true) {
   if (id === 'modal-preview') {
     _previewSeq++;
   }
+  if (id === 'modal-epub') {
+    // Remember where the reader was, drop the loaded chapter and fence any
+    // manifest fetch still in flight (same race as the preview above).
+    closeEpubReader();
+  }
   el.classList.remove('open');
   // Stop any media playing inside the modal
   el.querySelectorAll('video, audio').forEach(m => { m.pause(); m.src = ''; });
@@ -3722,6 +3732,15 @@ document.addEventListener('keydown', e => {
   if (document.getElementById('modal-preview').classList.contains('open')) {
     if (e.key === 'ArrowLeft')  { e.preventDefault(); navigatePreview(-1); return; }
     if (e.key === 'ArrowRight') { e.preventDefault(); navigatePreview(1);  return; }
+  }
+
+  // Arrow navigation inside the EPUB reader. The chapter dropdown is a select,
+  // which owns the arrow keys itself, so page from the modal only.
+  if (document.getElementById('modal-epub').classList.contains('open')) {
+    if (e.target.tagName !== 'SELECT') {
+      if (e.key === 'ArrowLeft')  { e.preventDefault(); showEpubDoc(epub.index - 1); return; }
+      if (e.key === 'ArrowRight') { e.preventDefault(); showEpubDoc(epub.index + 1); return; }
+    }
   }
 
   if (document.getElementById('slideshow-overlay').classList.contains('active')) {
@@ -3909,6 +3928,411 @@ function handleArchiveExtractMessage(msg) {
   }
 }
 
+// ─── EPUB reader ──────────────────────────────────────────────────────────────
+// The server hands out a manifest (metadata, reading order, table of contents)
+// whose documents are already rewritten so every URL they reference points
+// back at /api/epub/resource. Each document is rendered in a sandboxed,
+// same-origin iframe: same-origin so this frame can size and restyle it,
+// sandboxed and CSP-restricted server-side so the book cannot run script or
+// reach anything outside itself.
+const EPUB_FONT_KEY = 'filex_epub_font';
+const EPUB_FONT_MIN = 12;
+const EPUB_FONT_MAX = 28;
+const EPUB_FONT_DEFAULT = 17;
+const EPUB_POSITION_KEY = 'filex_epub_position';
+
+// Reader themes. "Book" leaves the book's own colours alone; the rest override
+// them from the parent frame, which is the only place with write access.
+const EPUB_THEMES = [
+  { name: 'Book', fg: '', bg: '' },
+  { name: 'Sepia', fg: '#3b2f28', bg: '#f4ecd8' },
+  { name: 'Light', fg: '#1b1b1b', bg: '#ffffff' },
+  { name: 'Dark', fg: '#d6d6d6', bg: '#161616' },
+];
+
+// epub is the reader's own state: the manifest, where it is in the book and how
+// it should look. It is separate from the preview state because the reader is a
+// full modal, not a preview pane.
+const epub = {
+  entry: null,
+  book: null,
+  index: 0,
+  seq: 0,
+  font: EPUB_FONT_DEFAULT,
+  theme: 0,
+};
+
+// epubPositionKey scopes the remembered reading position to one book file.
+function epubPositionKey(path) {
+  return EPUB_POSITION_KEY + ':' + path;
+}
+
+// openEpubReader loads a book's manifest and opens the reader on the chapter the
+// user last read, or the first one.
+async function openEpubReader(entry) {
+  const seq = ++epub.seq;
+  epub.entry = entry;
+
+  const titleEl = document.getElementById('epub-title');
+  const metaEl = document.getElementById('epub-meta');
+  const errEl = document.getElementById('epub-error');
+  titleEl.textContent = entry.name;
+  metaEl.textContent = 'Loading…';
+  errEl.hidden = true;
+  document.getElementById('epub-toc').hidden = true;
+  document.getElementById('epub-toc-toggle').classList.remove('active');
+  document.getElementById('epub-download').href = downloadUrl(entry.path);
+  document.getElementById('epub-download').download = entry.name;
+  resetEpubFrame();
+  openModal('modal-epub');
+
+  let book;
+  try {
+    book = await apiGet('/api/epub?' + new URLSearchParams({ path: entry.path }));
+  } catch (e) {
+    if (seq !== epub.seq) return;
+    titleEl.textContent = entry.name;
+    metaEl.textContent = '';
+    showEpubError('Cannot open this book: ' + e.message);
+    return;
+  }
+  if (seq !== epub.seq) return;
+  if (book == null) {
+    // apiGet resolves to null when the session has expired.
+    metaEl.textContent = '';
+    closeModal('modal-epub');
+    return;
+  }
+  if (!Array.isArray(book.docs) || book.docs.length === 0) {
+    metaEl.textContent = '';
+    showEpubError('This book has no readable chapters.');
+    return;
+  }
+
+  epub.book = book;
+  epub.font = epubSavedFont();
+  epub.theme = epubSavedTheme();
+  renderEpubMeta(book);
+  buildEpubChapterPicker(book);
+  buildEpubToc(book);
+  updateEpubChrome();
+
+  const resume = readEpubPosition(entry.path);
+  const start = resume && resume.index < book.docs.length ? resume.index : 0;
+  showEpubDoc(start, { scroll: resume && resume.index === start ? resume.scroll : 0 });
+}
+
+// renderEpubMeta fills the byline under the reader's title.
+function renderEpubMeta(book) {
+  document.getElementById('epub-title').textContent = book.title || (epub.entry && epub.entry.name) || 'Reader';
+  const parts = [];
+  if (book.author) parts.push(book.author);
+  if (book.publisher) parts.push(book.publisher);
+  if (book.date) parts.push(book.date);
+  const meta = parts.join(' · ');
+  if (book.cover) {
+    const img = document.createElement('img');
+    img.src = book.cover;
+    img.alt = '';
+    img.className = 'epub-cover';
+    img.addEventListener('error', () => img.remove());
+    const el = document.getElementById('epub-meta');
+    el.textContent = meta;
+    if (meta) el.appendChild(document.createTextNode(' '));
+    el.insertBefore(img, el.firstChild);
+  } else {
+    document.getElementById('epub-meta').textContent = meta;
+  }
+}
+
+function showEpubError(message) {
+  const errEl = document.getElementById('epub-error');
+  errEl.textContent = message;
+  errEl.hidden = false;
+}
+
+// buildEpubChapterPicker fills the chapter dropdown and keeps it in sync with
+// the current position.
+function buildEpubChapterPicker(book) {
+  const sel = document.getElementById('epub-chapters');
+  sel.innerHTML = '';
+  book.docs.forEach((d, i) => {
+    const opt = document.createElement('option');
+    opt.value = String(i);
+    opt.textContent = d.title || d.path;
+    sel.appendChild(opt);
+  });
+  sel.onchange = () => showEpubDoc(parseInt(sel.value, 10) || 0);
+}
+
+// buildEpubToc renders the table of contents as a nested list. Entries that
+// point outside the reading order stay visible as headings, because they are
+// usually part titles that still tell the reader where they are.
+function buildEpubToc(book) {
+  const list = document.getElementById('epub-toc-list');
+  list.innerHTML = '';
+  const frag = document.createDocumentFragment();
+  const append = (items, parent, depth) => {
+    items.forEach(item => {
+      const li = document.createElement('div');
+      li.className = 'epub-toc-item' + (item.doc < 0 ? ' heading' : '');
+      li.dataset.doc = String(item.doc);
+      li.dataset.fragment = item.fragment || '';
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = item.title || 'Untitled';
+      btn.style.paddingLeft = (8 + depth * 12) + 'px';
+      if (item.doc >= 0) {
+        btn.onclick = () => {
+          showEpubDoc(item.doc, { fragment: item.fragment });
+          toggleEpubToc(false);
+        };
+      }
+      li.appendChild(btn);
+      if (item.children && item.children.length) {
+        const kids = document.createElement('div');
+        kids.className = 'epub-toc-children';
+        append(item.children, kids, depth + 1);
+        li.appendChild(kids);
+      }
+      parent.appendChild(li);
+    });
+  };
+  append(book.toc || [], frag, 0);
+  list.appendChild(frag);
+}
+
+function toggleEpubToc(force) {
+  const toc = document.getElementById('epub-toc');
+  const show = force === undefined ? toc.hidden : force;
+  toc.hidden = !show;
+  document.getElementById('epub-toc-toggle').classList.toggle('active', show);
+}
+
+// showEpubDoc renders one chapter. scroll restores a saved offset within it and
+// fragment jumps to an anchor, which is how the table of contents addresses a
+// position inside a chapter rather than its start.
+function showEpubDoc(index, opts = {}) {
+  const book = epub.book;
+  if (!book || index < 0 || index >= book.docs.length) return;
+  saveEpubPosition();
+
+  epub.index = index;
+  document.getElementById('epub-error').hidden = true;
+  document.getElementById('epub-chapters').value = String(index);
+  highlightEpubToc(index);
+
+  const prevBtn = document.getElementById('epub-prev');
+  const nextBtn = document.getElementById('epub-next');
+  prevBtn.disabled = index <= 0;
+  nextBtn.disabled = index >= book.docs.length - 1;
+  document.getElementById('epub-progress').textContent =
+    (index + 1) + ' / ' + book.docs.length;
+
+  const frame = document.getElementById('epub-frame');
+  const scroll = opts.scroll || 0;
+  // Re-reading the chapter that is already in the frame (a TOC entry pointing
+  // back into the current page, or a restored position) does not always
+  // produce another load event, so restyle the document we already have rather
+  // than waiting for a load that may never come.
+  if (frame.getAttribute('src') === book.docs[index].url && documentFrameDocument()) {
+    applyEpubChrome();
+    positionEpubDocument(scroll, opts.fragment || '');
+    return;
+  }
+  frame.onload = () => onEpubDocLoaded(scroll, opts.fragment || '');
+  frame.setAttribute('src', book.docs[index].url);
+}
+
+function highlightEpubToc(index) {
+  document.querySelectorAll('#epub-toc-list .epub-toc-item').forEach(li => {
+    const isCurrent = !li.classList.contains('heading') && parseInt(li.dataset.doc, 10) === index;
+    li.classList.toggle('current', isCurrent);
+  });
+}
+
+// onEpubDocLoaded runs once a chapter document is in the frame: it applies the
+// reader's own styling, wires link handling and puts the frame at the position
+// it was asked for.
+function onEpubDocLoaded(scroll, fragment) {
+  const doc = documentFrameDocument();
+  if (!doc) return;
+  applyEpubChrome();
+  wireEpubDocument(doc);
+  positionEpubDocument(scroll, fragment);
+}
+
+// positionEpubDocument puts the chapter at a position inside itself. A
+// table-of-contents entry usually names a position in the middle of a chapter
+// rather than its start, so a fragment wins over the saved offset. Images that
+// have not loaded yet can still shift the layout under a restored offset, which
+// is why an offset is a convenience rather than an exact position.
+function positionEpubDocument(scroll, fragment) {
+  const doc = documentFrameDocument();
+  if (!doc) return;
+  const target = fragment ? doc.getElementById(fragment) : null;
+  if (target && target.scrollIntoView) {
+    target.scrollIntoView();
+  } else if (scroll > 0) {
+    scrollEpubDocument(scroll);
+  }
+}
+
+// documentFrameDocument returns the loaded chapter's document, or null when the
+// frame is empty or was navigated somewhere cross-origin.
+function documentFrameDocument() {
+  const frame = document.getElementById('epub-frame');
+  try {
+    const doc = frame.contentDocument;
+    return doc && doc.body ? doc : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+// epubFrameCSS is the reader's contribution to the book's own styles. Font size
+// goes on the root element so a book laid out in em units scales with it, and
+// the theme colours override the book's background and text so a dark or
+// sepia page stays readable on the app's dark chrome.
+function epubFrameCSS() {
+  const theme = EPUB_THEMES[epub.theme] || EPUB_THEMES[0];
+  let css = 'html{font-size:' + epub.font + 'px !important;text-size-adjust:none;-webkit-text-size-adjust:none}';
+  if (theme.bg) css += 'body{background:' + theme.bg + ' !important;color:' + theme.fg + ' !important}';
+  return css;
+}
+
+// applyEpubChrome (re)writes the reader's stylesheet into the chapter document.
+// It is a single marked <style> element so changing the size or the theme
+// replaces it instead of stacking up overrides.
+function applyEpubChrome() {
+  const doc = documentFrameDocument();
+  if (!doc) return;
+  let style = doc.querySelector('style[data-filex-reader]');
+  if (!style) {
+    style = doc.createElement('style');
+    style.setAttribute('data-filex-reader', '');
+    (doc.head || doc.documentElement).appendChild(style);
+  }
+  style.textContent = epubFrameCSS();
+}
+
+// epubScrollTop reads how far the chapter is scrolled. The chapter scrolls
+// inside the frame, so this is the reader's progress within the page.
+function epubScrollTop() {
+  const doc = documentFrameDocument();
+  if (!doc) return 0;
+  return doc.documentElement.scrollTop || (doc.body && doc.body.scrollTop) || 0;
+}
+
+// scrollEpubDocument restores a position within the chapter. Both roots are set
+// because a browser puts the scroll offset on whichever one it is scrolling.
+function scrollEpubDocument(offset) {
+  const doc = documentFrameDocument();
+  if (!doc) return;
+  doc.documentElement.scrollTop = offset;
+  if (doc.body) doc.body.scrollTop = offset;
+}
+
+// wireEpubDocument routes the chapter's own links through the reader instead of
+// letting the frame navigate: an in-book link becomes a chapter change the
+// reader can track, and anything else is refused rather than followed.
+function wireEpubDocument(doc) {
+  doc.addEventListener('click', ev => {
+    const link = ev.target && ev.target.closest ? ev.target.closest('a[href]') : null;
+    if (!link) return;
+    const href = link.getAttribute('href') || '';
+    if (href.startsWith('#')) return; // same-chapter anchor
+    ev.preventDefault();
+    const target = epubDocIndexForHref(href);
+    if (target === null) {
+      toast('Links out of the book are not followed', 'error');
+      return;
+    }
+    const frag = href.includes('#') ? href.slice(href.indexOf('#') + 1) : '';
+    showEpubDoc(target, { fragment: frag });
+  }, true);
+}
+
+// epubDocIndexForHref maps a rewritten link back to a reading-order index.
+function epubDocIndexForHref(href) {
+  if (!epub.book) return null;
+  let entry;
+  try {
+    entry = new URL(href, window.location.href).searchParams.get('entry');
+  } catch (e) {
+    return null;
+  }
+  if (!entry) return null;
+  return epub.book.docs.findIndex(d => d.path === entry);
+}
+
+function epubSavedFont() {
+  const saved = parseInt(localStorage.getItem(EPUB_FONT_KEY), 10);
+  return saved >= EPUB_FONT_MIN && saved <= EPUB_FONT_MAX ? saved : EPUB_FONT_DEFAULT;
+}
+
+function changeEpubFont(delta) {
+  epub.font = Math.min(EPUB_FONT_MAX, Math.max(EPUB_FONT_MIN, epub.font + delta));
+  localStorage.setItem(EPUB_FONT_KEY, String(epub.font));
+  applyEpubChrome();
+}
+
+function epubSavedTheme() {
+  const saved = parseInt(localStorage.getItem('filex_epub_theme'), 10);
+  return saved >= 0 && saved < EPUB_THEMES.length ? saved : 0;
+}
+
+function cycleEpubTheme() {
+  epub.theme = (epub.theme + 1) % EPUB_THEMES.length;
+  localStorage.setItem('filex_epub_theme', String(epub.theme));
+  document.getElementById('epub-theme').textContent = 'Theme: ' + EPUB_THEMES[epub.theme].name;
+  applyEpubChrome();
+}
+
+// updateEpubChrome refreshes the controls that mirror the reader's state.
+function updateEpubChrome() {
+  document.getElementById('epub-theme').textContent = 'Theme: ' + EPUB_THEMES[epub.theme].name;
+}
+
+function saveEpubPosition() {
+  if (!epub.book || !epub.entry) return;
+  const scroll = epubScrollTop();
+  try {
+    localStorage.setItem(epubPositionKey(epub.entry.path), JSON.stringify({ index: epub.index, scroll }));
+  } catch (e) {
+    // A full or unavailable store must not break paging; the position is a
+    // convenience, not state the reader needs.
+  }
+}
+
+function readEpubPosition(path) {
+  try {
+    const raw = localStorage.getItem(epubPositionKey(path));
+    const pos = raw ? JSON.parse(raw) : null;
+    if (!pos || typeof pos.index !== 'number' || pos.index < 0) return null;
+    return { index: pos.index, scroll: pos.scroll || 0 };
+  } catch (e) {
+    return null;
+  }
+}
+
+// resetEpubFrame clears the frame between books so a stale chapter (or a failed
+// load) cannot stay on screen behind an error message.
+function resetEpubFrame() {
+  const frame = document.getElementById('epub-frame');
+  frame.onload = null;
+  frame.removeAttribute('src');
+}
+
+function closeEpubReader() {
+  if (epub.book) saveEpubPosition();
+  epub.seq++;
+  epub.book = null;
+  epub.entry = null;
+  resetEpubFrame();
+  toggleEpubToc(false);
+}
+
 // ─── Init ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
   // Apply saved font size immediately
@@ -3971,6 +4395,19 @@ document.addEventListener('DOMContentLoaded', () => {
   // Preview navigation buttons (static handlers - direction never changes)
   document.getElementById('preview-prev').onclick = () => navigatePreview(-1);
   document.getElementById('preview-next').onclick = () => navigatePreview(1);
+
+  // EPUB reader controls
+  document.getElementById('epub-prev').onclick = () => showEpubDoc(epub.index - 1);
+  document.getElementById('epub-next').onclick = () => showEpubDoc(epub.index + 1);
+  document.getElementById('epub-toc-toggle').onclick = () => toggleEpubToc();
+  document.getElementById('epub-font-decrease').onclick = () => changeEpubFont(-1);
+  document.getElementById('epub-font-increase').onclick = () => changeEpubFont(1);
+  document.getElementById('epub-theme').onclick = cycleEpubTheme;
+  // Clicking the backdrop of a fullscreen reader closes it, matching the other
+  // modals; clicking inside the reader or the chapter does not.
+  document.getElementById('modal-epub').addEventListener('click', e => {
+    if (e.target === e.currentTarget) closeModal('modal-epub');
+  });
 
   // Upload button
   document.getElementById('btn-upload').addEventListener('click', () => {
